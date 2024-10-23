@@ -60,7 +60,7 @@ repos:
       - id: ruff
         name: ruff-check
         args: [
-            "--select=F,PT,B,C4,T20,S",
+            "--select=F,PT,B,C4,T20,S,N",
             "--fix"
             ]
   # Spellcheck in comments and docs
