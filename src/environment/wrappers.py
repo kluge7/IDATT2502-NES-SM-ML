@@ -171,7 +171,10 @@ class FrameStack(gym.Wrapper):
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k), dtype=env.observation_space.dtype
+            low=0,
+            high=255,
+            shape=(shp[0], shp[1], shp[2] * k),
+            dtype=env.observation_space.dtype,
         )
 
     def reset(self):
@@ -235,7 +238,10 @@ class FrameToTensor(ObservationWrapper):
         super().__init__(env)
         old_shape = self.observation_space.shape
         self.observation_space = gym.spaces.Box(
-            low=0.0, high=1.0, shape=(old_shape[-1], old_shape[0], old_shape[1]), dtype=np.float32
+            low=0.0,
+            high=1.0,
+            shape=(old_shape[-1], old_shape[0], old_shape[1]),
+            dtype=np.float32,
         )
 
     def observation(self, observation):
