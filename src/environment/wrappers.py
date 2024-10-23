@@ -1,8 +1,9 @@
+from collections import deque
+
 import cv2
 import gym
-from collections import deque
-from gym import ObservationWrapper
 import numpy as np
+from gym import ObservationWrapper
 
 
 # TODO: Adapt if needed for RL
@@ -10,8 +11,7 @@ class SkipFrame(gym.Wrapper):
     """Wrapper to skip a specified number of frames."""
 
     def __init__(self, env, skip) -> None:
-        """
-        Initialize the SkipFrame wrapper.
+        """Initialize the SkipFrame wrapper.
 
         Args:
         ----
@@ -23,14 +23,13 @@ class SkipFrame(gym.Wrapper):
         self._skip = skip
 
     def step(self, action):
-        """
-        Repeat action for a given number of frames and accumulate rewards.
+        """Repeat action for a given number of frames and accumulate rewards.
 
         Args:
         ----
             action: The action to be repeated over the skipped frames.
 
-        Returns
+        Returns:
         -------
             state: The observation after the skipped frames.
             total_reward: The total accumulated reward during the skipped frames.
@@ -52,8 +51,7 @@ class GrayScaleObservation(ObservationWrapper):
     """Convert observations from RGB to grayscale."""
 
     def __init__(self, env) -> None:
-        """
-        Initialize the GrayScaleObservation wrapper.
+        """Initialize the GrayScaleObservation wrapper.
 
         Args:
         ----
@@ -69,14 +67,13 @@ class GrayScaleObservation(ObservationWrapper):
         )
 
     def observation(self, observation):
-        """
-        Convert an RGB observation to grayscale.
+        """Convert an RGB observation to grayscale.
 
         Args:
         ----
             observation: The RGB observation from the environment.
 
-        Returns
+        Returns:
         -------
             The grayscale version of the observation.
 
@@ -88,8 +85,7 @@ class ResizeObservation(ObservationWrapper):
     """Resize observations to a given shape."""
 
     def __init__(self, env, shape) -> None:
-        """
-        Initialize the ResizeObservation wrapper.
+        """Initialize the ResizeObservation wrapper.
 
         Args:
         ----
@@ -104,14 +100,13 @@ class ResizeObservation(ObservationWrapper):
         )
 
     def observation(self, observation):
-        """
-        Resize the observation to the specified shape.
+        """Resize the observation to the specified shape.
 
         Args:
         ----
             observation: The observation from the environment.
 
-        Returns
+        Returns:
         -------
             The resized observation.
 
@@ -124,8 +119,7 @@ class PixelNormalize(ObservationWrapper):
     """Normalize pixel values from 0-255 to 0-1."""
 
     def __init__(self, env):
-        """
-        Initialize the PixelNormalize wrapper.
+        """Initialize the PixelNormalize wrapper.
 
         Args:
         ----
@@ -138,14 +132,13 @@ class PixelNormalize(ObservationWrapper):
         )
 
     def observation(self, obs):
-        """
-        Normalize the pixel values of the observation to the range [0, 1].
+        """Normalize the pixel values of the observation to the range [0, 1].
 
         Args:
         ----
             obs: The observation from the environment.
 
-        Returns
+        Returns:
         -------
             The normalized observation.
 
@@ -157,8 +150,7 @@ class FrameStack(gym.Wrapper):
     """Stack the last `k` frames to give the agent a sense of motion."""
 
     def __init__(self, env, k):
-        """
-        Initialize the FrameStack wrapper.
+        """Initialize the FrameStack wrapper.
 
         Args:
         ----
@@ -178,8 +170,7 @@ class FrameStack(gym.Wrapper):
         )
 
     def reset(self):
-        """
-        Reset the environment and stack `k` initial frames.
+        """Reset the environment and stack `k` initial frames.
 
         Returns
         -------
@@ -192,14 +183,13 @@ class FrameStack(gym.Wrapper):
         return self._get_observation()
 
     def step(self, action):
-        """
-        Take a step in the environment and stack the frames.
+        """Take a step in the environment and stack the frames.
 
         Args:
         ----
             action: The action to be taken in the environment.
 
-        Returns
+        Returns:
         -------
             obs: The stacked frames after the action.
             reward: The reward from the action.
@@ -212,8 +202,7 @@ class FrameStack(gym.Wrapper):
         return self._get_observation(), reward, done, info
 
     def _get_observation(self):
-        """
-        Get the stacked observation.
+        """Get the stacked observation.
 
         Returns
         -------
@@ -227,8 +216,7 @@ class FrameToTensor(ObservationWrapper):
     """Convert frames to tensors and move the channel axis to the front."""
 
     def __init__(self, env):
-        """
-        Initialize the FrameToTensor wrapper.
+        """Initialize the FrameToTensor wrapper.
 
         Args:
         ----
@@ -245,14 +233,13 @@ class FrameToTensor(ObservationWrapper):
         )
 
     def observation(self, observation):
-        """
-        Move the channel axis to the front for compatibility with PyTorch.
+        """Move the channel axis to the front for compatibility with PyTorch.
 
         Args:
         ----
             observation: The observation from the environment.
 
-        Returns
+        Returns:
         -------
             The observation with the channel axis moved to the front.
 
@@ -264,14 +251,13 @@ class ClipRewardEnv(gym.RewardWrapper):
     """Clip rewards to the range [-1, 1]."""
 
     def reward(self, reward):
-        """
-        Clip the reward to the range [-1, 1].
+        """Clip the reward to the range [-1, 1].
 
         Args:
         ----
             reward: The raw reward from the environment.
 
-        Returns
+        Returns:
         -------
             The clipped reward.
 
