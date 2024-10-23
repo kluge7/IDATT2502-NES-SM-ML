@@ -2,13 +2,13 @@ import gym
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from nes_py.wrappers import JoypadSpace
 from wrappers import (
-    SkipFrame,
-    GrayScaleObservation,
-    ResizeObservation,
-    PixelNormalize,
+    ClipRewardEnv,
     FrameStack,
     FrameToTensor,
-    ClipRewardEnv,
+    GrayScaleObservation,
+    PixelNormalize,
+    ResizeObservation,
+    SkipFrame,
 )
 
 
@@ -29,7 +29,7 @@ def create_env(map="SuperMarioBros-v0", skip=4):
 env = create_env()
 
 done = True
-for step in range(5000):
+for _step in range(5000):
     if done:
         state = env.reset()
     state, reward, done, info = env.step(env.action_space.sample())
