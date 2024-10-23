@@ -15,7 +15,7 @@
 repos:
   # Standard hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -34,7 +34,7 @@ repos:
       - id: fix-byte-order-marker
   # Python hooks
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.17.0
+    rev: v3.19.0
     hooks:
     -   id: pyupgrade
         args: [--py36-plus]
@@ -43,16 +43,13 @@ repos:
     hooks:
     - id: pydocstyle
       args: ["--ignore=D100,D101,D102,D103,D104,D105,D106,D107,D203,D212,D404,D417"]
-  - repo: https://github.com/psf/black
-    rev: 24.8.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.0
     hooks:
-      - id: black
-        args: ["--line-length=99"]
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.1.1
-    hooks:
-    - id: flake8
-      args: ["--extend-ignore=E501"]
+      # Run the formatter.
+      - id: ruff-format
+      # Run the linter.
+      - id: ruff
   # Spellcheck in comments and docs
   - repo: https://github.com/codespell-project/codespell
     rev: v2.3.0
