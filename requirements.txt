@@ -3,5 +3,6 @@ pre-commit
 gym==0.25.1
 gym-notices==0.0.8
 gym-super-mario-bros==7.4.0
-opencv-python
-numpy
+nes-py==8.2.1
+opencv-python==4.10.0.84
+numpy==1.26.4
