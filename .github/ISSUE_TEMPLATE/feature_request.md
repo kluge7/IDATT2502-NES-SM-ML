@@ -1,7 +1,7 @@
 ---
 name: 📃 Feature Template
 about: Use this template when defining a new feature
-title: "[FEATURE] - "
+title: "[FEATURE] "
 labels: enhancement
 assignees: ''
 ---
