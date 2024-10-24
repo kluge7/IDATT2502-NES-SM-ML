@@ -1,22 +1,24 @@
 ---
-name: Feature Request
-about: Suggest a new feature or improvement for the project
+name: 📃 Feature Template
+about: Use this template when defining a new feature
 title: "[FEATURE] - "
-labels: enhancement, feature
+labels: enhancement
 assignees: ''
 ---
 
-## Feature Description
-A clear and concise description of the feature or improvement you would like to see. What part of the environment or training algorithm does this affect?
+## Description of Task
+Provide a detailed description of the task. Include any relevant background information.
 
-## Problem Statement
-Is this feature related to a specific problem or limitation in the current setup? Please describe the issue you're trying to address.
+## Suggested Workflow
+Outline the suggested steps to complete the task:
 
-## Proposed Solution
-How would you like to implement this feature? Describe the steps or approach you would take to implement the environment or training algorithm.
+- [ ] Step 1
+- [ ] Step 2
+- [ ] Step 3
 
-## Alternatives Considered
-Have you considered any alternative solutions or workarounds? Briefly describe any other approaches you thought of.
+## Specifications
+List any specific requirements or specifications for the task:
 
-## Additional Context
-Is there any other context, documentation, or screenshots you can provide to help explain the feature? If this involves specific machine learning models or environments, please include relevant details.
+- [ ] Spec 1
+- [ ] Spec 2
+- [ ] Spec 3
