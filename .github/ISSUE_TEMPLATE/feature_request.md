@@ -9,13 +9,6 @@ assignees: ''
 ## Description of Task
 Provide a detailed description of the task. Include any relevant background information.
 
-## Suggested Workflow
-Outline the suggested steps to complete the task:
-
-- [ ] Step 1
-- [ ] Step 2
-- [ ] Step 3
-
 ## Specifications
 List any specific requirements or specifications for the task:
 
