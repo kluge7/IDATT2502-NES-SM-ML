@@ -1,6 +1,6 @@
 ---
 name: 🔬 Research Template
-description: Use this template when the task is a topic that needs to be looked further into
+about: Use this template when the task is a topic that needs to be looked further into
 title: "[RESEARCH] "
 ---
 
