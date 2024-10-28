@@ -31,3 +31,16 @@ def extract_and_save_data(main_directory: str, csv_file_path: str) -> None:
                 if file.is_file():
                     parsed_data = parse_filename_to_data(file.name)
                     append_data_to_csv(parsed_data, csv_file_path)
+
+
+def read_sort_and_write_csv(file_path: str) -> None:
+    with open(file_path, newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        data = list(reader)
+
+    sorted_data = sorted(data, key=lambda row: (int(row["episode"]), int(row["frame"])))
+
+    with open(file_path, mode="w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=reader.fieldnames)
+        writer.writeheader()
+        writer.writerows(sorted_data)
