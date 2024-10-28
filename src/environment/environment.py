@@ -11,7 +11,7 @@ from src.environment.wrappers import (
 )
 
 
-def create_env(map="SuperMarioBros-v0", action_repeat=4):
+def create_env(map="SuperMarioBros-1-1-v0", action_repeat=4):
     """Sets up the Super Mario Bros environment with customized wrappers."""
     env = ActionRepeat(gym_super_mario_bros.make(map), action_repeat)
     env = ResizeAndGrayscale(env)
