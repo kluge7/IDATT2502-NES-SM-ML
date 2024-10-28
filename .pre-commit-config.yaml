@@ -17,7 +17,6 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      - id: check-added-large-files
       - id: check-ast
       - id: check-case-conflict
       - id: check-docstring-first
@@ -61,6 +60,7 @@ repos:
         name: ruff-check
         args: [
             "--select=F,PT,B,C4,T20,S,N",
+            "--ignore=T201,N812",
             "--fix"
             ]
   # Spellcheck in comments and docs
