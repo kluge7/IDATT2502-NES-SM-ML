@@ -36,8 +36,10 @@ class ResizeAndGrayscale(gym.ObservationWrapper):
             low=0, high=255, shape=(84, 84, 1), dtype=np.uint8
         )
 
+        
     def observation(self, observation):
         return ResizeAndGrayscale.convert(observation)
+
 
     @staticmethod
     def convert(frame):
