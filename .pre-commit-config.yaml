@@ -60,7 +60,7 @@ repos:
         name: ruff-check
         args: [
             "--select=F,PT,B,C4,T20,S,N",
-            "--ignore=T201,N812",
+            "--ignore=T201,N812,S311",
             "--fix"
             ]
   # Spellcheck in comments and docs
