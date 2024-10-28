@@ -172,8 +172,7 @@ class FrameStack(gym.Wrapper):
     def reset(self):
         """Reset the environment and stack `k` initial frames.
 
-        Returns
-        -------
+        Returns:
             The stacked frames as the initial observation.
 
         """
@@ -186,11 +185,9 @@ class FrameStack(gym.Wrapper):
         """Take a step in the environment and stack the frames.
 
         Args:
-        ----
             action: The action to be taken in the environment.
 
         Returns:
-        -------
             obs: The stacked frames after the action.
             reward: The reward from the action.
             done: Whether the episode has ended.
@@ -204,7 +201,7 @@ class FrameStack(gym.Wrapper):
     def _get_observation(self):
         """Get the stacked observation.
 
-        Returns
+        Returns:
         -------
             The concatenated frames.
 
