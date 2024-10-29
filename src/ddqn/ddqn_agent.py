@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import os
 import random
 from collections import deque
@@ -8,7 +9,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from src.environment.environment import create_env
-from src.ppo.cnn_network import CNNNetwork
+from src.ddqn.dqn_model import DQN
 
 MODEL_PATH = "model/ddqn_model.pth"
 TRAINING_RESULTS_PATH = "training_results/training_results.csv"
@@ -19,24 +20,31 @@ class DDQNAgent:
         self,
         state_dim,
         action_dim,
-        replay_buffer_size=10000,
-        batch_size=64,
-        gamma=0.99,
-        lr=1e-4,
-        target_update_freq=1000,
+        replay_buffer_size=1000000,
+        batch_size=32,
+        gamma=0.95,
+        lr=0.00025,
+        tau=0.005,
+        epsilon_start=0.05,
+        epsilon_min=0.05,
+        epsilon_decay=0.99
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
-        self.target_update_freq = target_update_freq
+        self.tau = tau
+        self.epsilon = epsilon_start
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
+
 
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize main and target networks
-        self.policy_net = CNNNetwork(state_dim, action_dim).to(self.device)
-        self.target_net = CNNNetwork(state_dim, action_dim).to(self.device)
+        self.policy_net = DQN(state_dim, action_dim).to(self.device)
+        self.target_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -47,8 +55,8 @@ class DDQNAgent:
         self.replay_buffer = deque(maxlen=replay_buffer_size)
         self.update_count = 0
 
-    def select_action(self, state, epsilon=0.1):
-        if random.random() < epsilon:
+    def select_action(self, state):
+        if random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
         with torch.no_grad():
             state = state.to(self.device).unsqueeze(0)  # Add batch dimension
@@ -92,18 +100,19 @@ class DDQNAgent:
         loss.backward()
         self.optimizer.step()
 
-        # Update target network periodically
-        self.update_count += 1
-        if self.update_count % self.target_update_freq == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Perform soft update on target network
+        self.soft_update_target_network()
+
+    def soft_update_target_network(self):
+        """Softly updates the target network by blending it with the policy network."""
+        for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
+            target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
 
     def train(
-        self, env, num_episodes, epsilon_start=1.0, epsilon_end=0.1, epsilon_decay=0.995
+        self, env, num_episodes
     ):
         os.makedirs("model", exist_ok=True)
         os.makedirs("training_results", exist_ok=True)
-
-        epsilon = epsilon_start
 
         with open(TRAINING_RESULTS_PATH, mode="w", newline="") as file:
             writer = csv.writer(file)
@@ -117,7 +126,7 @@ class DDQNAgent:
 
             while not done:
                 env.render()
-                action = self.select_action(state, epsilon=epsilon)
+                action = self.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 next_state = torch.tensor(next_state, dtype=torch.float32)
                 episode_reward += reward
@@ -128,8 +137,9 @@ class DDQNAgent:
                 state = next_state
 
             # Decay epsilon
-            if epsilon > epsilon_end:
-                epsilon *= epsilon_decay
+            if self.epsilon > self.epsilon_min:
+                self.epsilon *= self.epsilon_decay
+                print(f"Epsilon after decay: {self.epsilon}")
 
             print(f"Episode {episode + 1}/{num_episodes}, Reward: {episode_reward}")
 
@@ -138,19 +148,29 @@ class DDQNAgent:
                 writer = csv.writer(file)
                 writer.writerow([episode + 1, episode_reward])
 
-            # Save the model every 10 episodes
-            if (episode + 1) % 10 == 0:
+            # Save the model every 2 episodes
+            if (episode + 1) % 2 == 0:
                 self.save_model(MODEL_PATH)
 
     def save_model(self, path):
         torch.save(self.policy_net.state_dict(), path)
         print(f"Model saved to {path}")
+        checksum = get_model_checksum(self.policy_net)
+        print(f"Checksum of saved model: {checksum}")
 
     def load_model(self, path):
         self.policy_net.load_state_dict(torch.load(path, map_location=self.device))
         self.target_net.load_state_dict(self.policy_net.state_dict())
         print(f"Model loaded from {path}")
+        checksum = get_model_checksum(self.policy_net)
+        print(f"Checksum of saved model: {checksum}")
 
+def get_model_checksum(model):
+    """Returns a checksum of the model's parameters."""
+    md5 = hashlib.md5()
+    for param in model.parameters():
+        md5.update(param.detach().cpu().numpy().tobytes())
+    return md5.hexdigest()
 
 def main():
     # Create the environment
@@ -163,8 +183,13 @@ def main():
     # Initialize the DDQN agent
     agent = DDQNAgent(state_dim=in_dim, action_dim=num_actions)
 
+    if os.path.exists(MODEL_PATH):
+        agent.load_model(MODEL_PATH)
+    else:
+        print("No pre-trained model found")
+
     # Train the agent
-    num_episodes = 2  # You can change this based on how long you want to train
+    num_episodes = 10000  # You can change this based on how long you want to train
     agent.train(env, num_episodes)
 
     # Save the trained model
