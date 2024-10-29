@@ -1,5 +1,8 @@
+import gym_super_mario_bros
 import torch
 import torch.nn.functional as functional
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
+from nes_py.wrappers import JoypadSpace
 from torch import nn, optim
 
 # Laste dataene i modellene
@@ -46,3 +49,16 @@ for _epoch in range(num_epochs):
 
 
 # Super Mario Miljøet
+
+
+env = gym_super_mario_bros.make("SuperMarioBros-v0")
+env = JoypadSpace(env, SIMPLE_MOVEMENT)
+
+done = True
+for _step in range(5000):
+    if done:
+        state = env.reset()
+    state, reward, done, info = env.step(env.action_space.sample())
+    env.render()
+
+env.close()
