@@ -8,9 +8,10 @@ from torch.distributions import Categorical
 
 from src.environment.environment import create_env
 from src.ppo.cnn_network import CNNNetwork
+from src.utils import get_unique_filename
 
-ACTOR_PATH = "networks/actor.pth"
-CRITIC_PATH = "networks/critic.pth"
+ACTOR_PATH = "model/actor.pth"
+CRITIC_PATH = "model/critic.pth"
 
 
 class PPOAgent:
@@ -169,7 +170,7 @@ class PPOAgent:
             critic_loss.backward()
             self.critic_optimizer.step()
 
-    def save(self, path="ppo_agent"):
+    def save(self, path="model"):
         """Saves the actor and critic networks to .pth files.
 
         Args:
@@ -181,25 +182,36 @@ class PPOAgent:
         torch.save(self.critic.state_dict(), os.path.join(path, "critic.pth"))
         print(f"Model saved to {path}")
 
-    def train(self, env, num_episodes, save_path="training_results.csv"):
+    def train(
+        self, env, num_episodes, path="training_result", output=None, render=False
+    ):
         """Train the agent using PPO in the specified environment.
 
         Args:
             env: The wrapped environment to train the agent in.
             num_episodes: Integer, number of episodes to train the agent.
-            save_path: Path to save the training results.
+            path: Path to save the training results.
+            output: the name of the output csv file
+            render: Whether to render the environment.
 
         """
-        # Initialize or reset the save file for results
-        with open(save_path, mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["Episode", "Reward"])  # Write headers
+        os.makedirs(path, exist_ok=True)  # Create directory if it doesn't exist
+
+        if output:
+            # Find a unique filename if the specified output file already exists
+            output = get_unique_filename(path, output)
+
+            # Initialize or reset the save file for results
+            with open(os.path.join(path, output), mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["Episode", "Reward", "Got_Flag"])  # Write headers
 
         for episode in range(num_episodes):
             state = env.reset()
             done = False
             states, actions, log_probs, rewards, values, dones = [], [], [], [], [], []
             episode_reward = 0
+            got_the_flag = False
 
             while not done:
                 # Ensure the state tensor is on the correct device
@@ -211,7 +223,7 @@ class PPOAgent:
                 action, log_prob, value = self.select_action(state_tensor)
 
                 # Interact with environment
-                next_state, reward, done, _ = env.step(action)
+                next_state, reward, done, info = env.step(action)
                 episode_reward += reward
 
                 # Store experience for this episode
@@ -223,6 +235,14 @@ class PPOAgent:
                 dones.append(done)
 
                 state = next_state
+
+                # Check if agent got the flag
+                if info.get("flag_get", False):
+                    got_the_flag = True
+
+                # Render environment
+                if render:
+                    env.render()
 
             # Compute advantages and returns
             next_state_tensor = (
@@ -250,15 +270,19 @@ class PPOAgent:
             # Log the episode reward
             print(f"Episode {episode + 1}/{num_episodes}, Reward: {episode_reward}")
 
-            # Save the result to a file every 10 episodes
-            if (episode + 1) % 10 == 0:
-                with open(save_path, mode="a", newline="") as file:
+            # Append episode results to the CSV file
+            if output:
+                with open(os.path.join(path, output), mode="a", newline="") as file:
                     writer = csv.writer(file)
-                    writer.writerow([episode + 1, episode_reward])
+                    writer.writerow(
+                        [episode + 1, episode_reward, 1 if got_the_flag else 0]
+                    )
 
 
 def main():
-    env = create_env()
+    world, stage, env_version = 1, 1, "v0"
+    specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
+    env = create_env(map=specification)
     sample_observation = env.reset()
     print("Sample observation shape:", sample_observation.shape)
     agent = PPOAgent(env.observation_space.shape, env.action_space.n)
@@ -273,8 +297,8 @@ def main():
     )
     # ----------------------------------------------------------
 
-    agent.train(env, 50)
-    agent.save("networks")
+    agent.train(env, 10, render=False, output=specification + ".csv")
+    agent.save()
 
 
 if __name__ == "__main__":
