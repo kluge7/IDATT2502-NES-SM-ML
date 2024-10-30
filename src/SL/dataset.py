@@ -1,6 +1,45 @@
 import csv
+import os
 import re
 from pathlib import Path
+
+path = "C:/Users/ander/project-machine/IDATT2502-NES-SM-ML/data-smb/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
+
+dir_list = os.listdir(path)
+actions = []
+frames = []
+
+
+actions_set = {0: "A", 1: "up", 2: "left", 3: "B", 4: "right", 5: "down", 6: "select"}
+
+
+def get_action_from_bit():
+    action_keys = []
+    for action in actions:
+        action_comb = []
+        binary = format(int(action[0]), "08b")
+        str_binary = str(binary)
+        for i in range(len(str_binary)):
+            if str_binary[i] == "1":
+                action_comb.append(i)
+        action_keys.append(action_comb)
+    return action_keys
+
+
+def get_actions():
+    for file in dir_list:
+        action = re.findall("_a([0-9]+)", file.lower())
+        actions.append(action)
+
+
+def get_frames():
+    for file in dir_list:
+        frame = re.findall("_f([0-9]+)", file.lower())
+        frames.append(frame)
+
+
+get_actions()
+action_index = get_action_from_bit()
 
 
 def parse_filename_to_data(filename: str) -> list:
