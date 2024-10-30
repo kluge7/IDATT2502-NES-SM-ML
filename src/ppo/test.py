@@ -2,12 +2,15 @@ import torch
 
 from src.environment.environment import (
     create_env,
-)  # Import the environment setup function
-from src.ppo.ppo_agent import PPOAgent  # Import the PPOAgent class
+)
+from src.ppo.ppo_agent import PPOAgent
 
 # Paths to the saved model files
-ACTOR_PATH = "src/ppo/model/actor.pth"
-CRITIC_PATH = "src/ppo/model/critic.pth"
+ACTOR_PATH = "model/actor.pth"
+CRITIC_PATH = "model/critic.pth"
+
+# Set device to GPU if available, else fallback to CPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def load_trained_agent(in_dim, num_actions, actor_path, critic_path):
@@ -20,21 +23,19 @@ def load_trained_agent(in_dim, num_actions, actor_path, critic_path):
         critic_path (str): Path to the saved critic model.
 
     Returns:
-        PPOAgent: The PPO agent with loaded weights.
+        PPOAgent: The PPO agent with loaded weights on the appropriate device (GPU if available).
 
     """
-    # Initialize the PPO agent
     agent = PPOAgent(in_dim, num_actions)
 
-    # Load the trained model weights
-    agent.actor.load_state_dict(
-        torch.load(actor_path, map_location=torch.device("cpu"))
-    )
-    agent.critic.load_state_dict(
-        torch.load(critic_path, map_location=torch.device("cpu"))
-    )
+    # Load the trained model weights to the device
+    agent.actor.load_state_dict(torch.load(actor_path, map_location=device))
+    agent.critic.load_state_dict(torch.load(critic_path, map_location=device))
 
-    # Set models to evaluation mode
+    # Move models to the device
+    agent.actor.to(device)
+    agent.critic.to(device)
+
     agent.actor.eval()
     agent.critic.eval()
 
@@ -42,52 +43,33 @@ def load_trained_agent(in_dim, num_actions, actor_path, critic_path):
 
 
 def play_single_game(agent, env):
-    """Plays a single game using the provided agent and environment.
-
-    Args:
-        agent (PPOAgent): The trained PPO agent.
-        env: The Super Mario Bros environment.
-
-    """
+    """Plays a single game using the provided agent and environment."""
     state = env.reset()
     done = False
     total_reward = 0
 
     while not done:
-        # Convert state to tensor and add batch dimension
-        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-
-        # Select an action using the trained agent
+        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(device)
         action, _, _ = agent.select_action(state_tensor)
-
-        # Step the environment with the selected action
         next_state, reward, done, info = env.step(action)
-
-        # Accumulate rewards for logging
         total_reward += reward
-
-        # Render the environment to visualize the agent playing
         env.render()
-
-        # Update state for the next step
         state = next_state
 
-    env.close()  # Close the environment window
+    env.close()
     print("Total Reward:", total_reward)
 
 
 def main():
-    # Create the Super Mario Bros environment
-    env = create_env()
+    """Main function to initialize the environment, load the agent, and play a single game."""
+    env = create_env(
+        map="SuperMarioBros-1-1-v0", output_path="output/SuperMarioBros-1-1-v0.mp4"
+    )
 
-    # Initialize the input dimensions and number of actions from the environment
     in_dim = env.observation_space.shape
     num_actions = env.action_space.n
-
-    # Load the trained PPO agent
     agent = load_trained_agent(in_dim, num_actions, ACTOR_PATH, CRITIC_PATH)
 
-    # Play a single game with the loaded agent
     play_single_game(agent, env)
 
 
