@@ -1,10 +1,24 @@
 import os
 import re
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from PIL import Image
 from sklearn.preprocessing import MultiLabelBinarizer
 from torchvision import transforms
+
+
+def display_image(image_tensor):
+    # Convert the PyTorch tensor to a PIL Image
+    pil_image = Image.fromarray(
+        (image_tensor.squeeze().cpu().numpy() * 255).astype(np.uint8), mode="L"
+    )
+
+    # Display the image
+    plt.imshow(pil_image, cmap="gray")
+    plt.axis("off")  # Turn off axis numbers
+    plt.show()
 
 
 def parse_filename_to_action(filename: str) -> int:
