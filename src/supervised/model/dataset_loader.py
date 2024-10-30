@@ -1,8 +1,6 @@
 import os
 import re
 
-from sklearn.model_selection import train_test_split
-
 
 def parse_filename_to_action(filename: str) -> int:
     components = re.split(r"[_-]", filename)
@@ -21,33 +19,34 @@ action_map = {
     3: "start",
     2: "right",
     1: "down",
-    0: "select",
+    0: "noop",
 }
 
 
 def get_actions(input_integer) -> list:
-    active_actions = []
+    if input_integer == 0:
+        return ["noop"]
 
+    active_actions = []
     for bit in range(8):
         if input_integer & (1 << bit):
             active_actions.append(action_map[bit])
     return active_actions
 
 
-file_paths = []
-labels = []
-
-
-def generate_images_labels() -> None:
+def get_train_test_data(data_dir: str) -> tuple[list, list]:
+    images = []
+    labels = []
     for filename in os.listdir(data_dir):
         if filename.endswith(".png"):
-            file_paths.append(os.path.join(data_dir, filename))
+            images.append(os.path.join(data_dir, filename))
 
             action = parse_filename_to_action(filename)
             label = get_actions(action)
             labels.append(label)
+    return images, labels
 
 
-train_paths, test_paths, train_labels, test_labels = train_test_split(
-    file_paths, labels, test_size=0.2
+train_test_data_images, train_test_data_labels = get_train_test_data(
+    "src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
 )
