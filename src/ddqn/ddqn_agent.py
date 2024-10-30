@@ -4,6 +4,7 @@ import os
 import random
 from collections import deque
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -17,19 +18,19 @@ TRAINING_RESULTS_PATH = "training_results/training_results.csv"
 
 class DDQNAgent:
     def __init__(
-        self,
-        state_dim,
-        action_dim,
-        replay_buffer_size=1000000,
-        batch_size=32,
-        gamma=0.95,
-        lr=0.00025,
-        tau=0.005,
-        epsilon_start=0.05,
-        epsilon_min=0.05,
-        epsilon_decay=0.99
+            self,
+            state_dim,
+            action_dim,
+            replay_buffer_size=100000,
+            batch_size=32,
+            gamma=0.95,
+            lr=0.00025,
+            tau=0.005,
+            epsilon_start=0.73,
+            epsilon_min=0.01,
+            epsilon_decay=0.995
     ):
-        self.state_dim = state_dim
+        self.state_dim = state_dim  # Expected shape: (channels, height, width)
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
@@ -37,7 +38,6 @@ class DDQNAgent:
         self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
-
 
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,15 +53,16 @@ class DDQNAgent:
 
         # Experience replay buffer
         self.replay_buffer = deque(maxlen=replay_buffer_size)
-        self.update_count = 0
 
     def select_action(self, state):
         if random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
-        with torch.no_grad():
-            state = state.to(self.device).unsqueeze(0)  # Add batch dimension
-            q_values = self.policy_net(state)
-            return q_values.argmax().item()
+        else:
+            with torch.no_grad():
+                state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(
+                    self.device)  # Shape: (1, channels, height, width)
+                q_values = self.policy_net(state)
+                return q_values.argmax().item()
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.append((state, action, reward, next_state, done))
@@ -75,10 +76,11 @@ class DDQNAgent:
         states, actions, rewards, next_states, dones = zip(*batch)
 
         # Convert to tensors
-        states = torch.stack(states).to(self.device)
+        states = torch.tensor(np.array(states), dtype=torch.float32).to(
+            self.device)  # Shape: (batch_size, channels, height, width)
         actions = torch.tensor(actions, dtype=torch.long).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        next_states = torch.stack(next_states).to(self.device)
+        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         # Compute Q(s, a) with policy network
@@ -86,13 +88,9 @@ class DDQNAgent:
 
         # Compute target Q-values using DDQN
         with torch.no_grad():
-            next_action_indices = self.policy_net(next_states).argmax(dim=1)
-            next_q_values = (
-                self.target_net(next_states)
-                .gather(1, next_action_indices.unsqueeze(1))
-                .squeeze(1)
-            )
-            target_q_values = rewards + (self.gamma * next_q_values * (1 - dones))
+            next_actions = self.policy_net(next_states).argmax(dim=1)
+            next_q_values = self.target_net(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
+            target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
 
         # Compute loss and optimize the policy network
         loss = F.mse_loss(q_values, target_q_values)
@@ -108,9 +106,7 @@ class DDQNAgent:
         for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
             target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
 
-    def train(
-        self, env, num_episodes
-    ):
+    def train(self, env, num_episodes):
         os.makedirs("model", exist_ok=True)
         os.makedirs("training_results", exist_ok=True)
 
@@ -119,8 +115,7 @@ class DDQNAgent:
             writer.writerow(["Episode", "Reward"])
 
         for episode in range(num_episodes):
-            state = env.reset()
-            state = torch.tensor(state, dtype=torch.float32)
+            state = env.reset()  # State shape: (channels, height, width)
             done = False
             episode_reward = 0
 
@@ -128,7 +123,6 @@ class DDQNAgent:
                 env.render()
                 action = self.select_action(state)
                 next_state, reward, done, info = env.step(action)
-                next_state = torch.tensor(next_state, dtype=torch.float32)
                 episode_reward += reward
 
                 self.store_transition(state, action, reward, next_state, done)
@@ -139,6 +133,7 @@ class DDQNAgent:
             # Decay epsilon
             if self.epsilon > self.epsilon_min:
                 self.epsilon *= self.epsilon_decay
+                self.epsilon = max(self.epsilon, self.epsilon_min)
                 print(f"Epsilon after decay: {self.epsilon}")
 
             print(f"Episode {episode + 1}/{num_episodes}, Reward: {episode_reward}")
@@ -148,8 +143,8 @@ class DDQNAgent:
                 writer = csv.writer(file)
                 writer.writerow([episode + 1, episode_reward])
 
-            # Save the model every 2 episodes
-            if (episode + 1) % 2 == 0:
+            # Save the model every 10 episodes
+            if (episode + 1) % 10 == 0:
                 self.save_model(MODEL_PATH)
 
     def save_model(self, path):
@@ -165,6 +160,19 @@ class DDQNAgent:
         checksum = get_model_checksum(self.policy_net)
         print(f"Checksum of saved model: {checksum}")
 
+    def populate_replay_buffer(self, env, initial_size):
+        state = env.reset()
+        for _ in range(initial_size):
+            env.render()
+            action = random.randint(0, self.action_dim - 1)
+            next_state, reward, done, _ = env.step(action)
+            self.store_transition(state, action, reward, next_state, done)
+            if done:
+                state = env.reset()
+            else:
+                state = next_state
+
+
 def get_model_checksum(model):
     """Returns a checksum of the model's parameters."""
     md5 = hashlib.md5()
@@ -172,12 +180,13 @@ def get_model_checksum(model):
         md5.update(param.detach().cpu().numpy().tobytes())
     return md5.hexdigest()
 
+
 def main():
     # Create the environment
     env = create_env()
 
     # Get input dimensions and number of actions
-    in_dim = env.observation_space.shape
+    in_dim = env.observation_space.shape  # Expected shape: (channels, height, width)
     num_actions = env.action_space.n
 
     # Initialize the DDQN agent
@@ -188,8 +197,11 @@ def main():
     else:
         print("No pre-trained model found")
 
+    # Populate the replay buffer with random transitions
+    agent.populate_replay_buffer(env, initial_size=10000)
+
     # Train the agent
-    num_episodes = 10000  # You can change this based on how long you want to train
+    num_episodes = 10000  # Adjust as needed
     agent.train(env, num_episodes)
 
     # Save the trained model
