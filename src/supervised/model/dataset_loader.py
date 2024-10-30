@@ -1,6 +1,11 @@
 import os
 import re
 
+import torch
+from PIL import Image
+from sklearn.preprocessing import MultiLabelBinarizer
+from torchvision import transforms
+
 
 def parse_filename_to_action(filename: str) -> int:
     components = re.split(r"[_-]", filename)
@@ -34,19 +39,38 @@ def get_actions(input_integer) -> list:
     return active_actions
 
 
-def get_train_test_data(data_dir: str) -> tuple[list, list]:
+def get_train_test_data(data_dir: str) -> tuple[torch.Tensor, torch.Tensor]:
     images = []
     labels = []
+
+    # Define the image transformaiton.
+    # Turn the image grayscale and convert to tensor
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((240, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
+
+    # Define encoder for labels
+    mlb = MultiLabelBinarizer()
+
     for filename in os.listdir(data_dir):
         if filename.endswith(".png"):
-            images.append(os.path.join(data_dir, filename))
+            img_path = os.path.join(data_dir, filename)
+            img = Image.open(img_path)
+            img_tensor = transform(img)
+            images.append(img_tensor)
 
             action = parse_filename_to_action(filename)
             label = get_actions(action)
             labels.append(label)
-    return images, labels
 
+    labels_encoded = mlb.fit_transform(labels)
 
-train_test_data_images, train_test_data_labels = get_train_test_data(
-    "src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
-)
+    images = torch.stack(images)
+    labels_tensor = torch.tensor(labels_encoded, dtype=torch.float32)
+
+    return images, labels_tensor
