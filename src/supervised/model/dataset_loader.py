@@ -5,11 +5,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
-from sklearn.preprocessing import MultiLabelBinarizer
 from torchvision import transforms
 
+# Directory with images
+data_dir = "src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
 
-def display_image(image_tensor):
+action_map = {
+    7: "A",
+    6: "up",
+    5: "left",
+    4: "B",
+    3: "start",
+    2: "right",
+    1: "down",
+    0: "NOOP",
+}
+
+
+def display_image(image_tensor: torch.Tensor) -> None:
     # Convert the PyTorch tensor to a PIL Image
     pil_image = Image.fromarray(
         (image_tensor.squeeze().cpu().numpy() * 255).astype(np.uint8), mode="L"
@@ -27,33 +40,18 @@ def parse_filename_to_action(filename: str) -> int:
     return int(action)
 
 
-# Directory with images
-data_dir = "../data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
-
-action_map = {
-    7: "A",
-    6: "up",
-    5: "left",
-    4: "B",
-    3: "start",
-    2: "right",
-    1: "down",
-    0: "noop",
-}
-
-
-def get_actions(input_integer) -> list:
+def get_actions(input_integer: int) -> list:
     if input_integer == 0:
-        return ["noop"]
+        return ["NOOP"]
 
     active_actions = []
     for bit in range(8):
         if input_integer & (1 << bit):
             active_actions.append(action_map[bit])
-    return active_actions
+    return sorted(active_actions)
 
 
-def get_train_test_data(data_dir: str) -> tuple[torch.Tensor, torch.Tensor]:
+def get_train_test_data(data_dir: str) -> tuple[torch.Tensor, list]:
     images = []
     labels = []
 
@@ -68,9 +66,6 @@ def get_train_test_data(data_dir: str) -> tuple[torch.Tensor, torch.Tensor]:
         ]
     )
 
-    # Define encoder for labels
-    mlb = MultiLabelBinarizer()
-
     for filename in os.listdir(data_dir):
         if filename.endswith(".png"):
             img_path = os.path.join(data_dir, filename)
@@ -82,9 +77,5 @@ def get_train_test_data(data_dir: str) -> tuple[torch.Tensor, torch.Tensor]:
             label = get_actions(action)
             labels.append(label)
 
-    labels_encoded = mlb.fit_transform(labels)
-
     images = torch.stack(images)
-    labels_tensor = torch.tensor(labels_encoded, dtype=torch.float32)
-
-    return images, labels_tensor
+    return images, labels
