@@ -109,42 +109,52 @@ class DDQNAgent:
         os.makedirs("model", exist_ok=True)
         os.makedirs("training_results", exist_ok=True)
 
-        with open(TRAINING_RESULTS_PATH, mode="w", newline="") as file:
+        # Check if the CSV already exists and load the last episode number if it does
+        start_episode = 1
+        if os.path.isfile(TRAINING_RESULTS_PATH):
+            with open(TRAINING_RESULTS_PATH, mode="r") as file:
+                last_line = None
+                for last_line in file:
+                    pass  # Iterate to the end of the file
+                if last_line is not None and last_line.strip():
+                    start_episode = int(last_line.split(",")[0]) + 1  # Start from the next episode
+
+        with open(TRAINING_RESULTS_PATH, mode="a", newline="") as file:  # Open in append mode
             writer = csv.writer(file)
-            writer.writerow(["Episode", "Reward"])
+            # Write header only if file is new
+            if start_episode == 1:
+                writer.writerow(["Episode", "Reward"])
 
-        for episode in range(num_episodes):
-            state = env.reset()  # State shape: (channels, height, width)
-            done = False
-            episode_reward = 0
+            for episode in range(num_episodes):
+                state = env.reset()  # State shape: (channels, height, width)
+                done = False
+                episode_reward = 0
 
-            while not done:
-                env.render()
-                action = self.select_action(state)
-                next_state, reward, done, info = env.step(action)
-                episode_reward += reward
+                while not done:
+                    env.render()
+                    action = self.select_action(state)
+                    next_state, reward, done, info = env.step(action)
+                    episode_reward += reward
 
-                self.store_transition(state, action, reward, next_state, done)
-                self.update()
+                    self.store_transition(state, action, reward, next_state, done)
+                    self.update()
 
-                state = next_state
+                    state = next_state
 
-            # Decay epsilon
-            if self.epsilon > self.epsilon_min:
-                self.epsilon *= self.epsilon_decay
-                self.epsilon = max(self.epsilon, self.epsilon_min)
-                print(f"Epsilon after decay: {self.epsilon}")
+                # Decay epsilon
+                if self.epsilon > self.epsilon_min:
+                    self.epsilon *= self.epsilon_decay
+                    self.epsilon = max(self.epsilon, self.epsilon_min)
+                    print(f"Epsilon after decay: {self.epsilon}")
 
-            print(f"Episode {episode + 1}/{num_episodes}, Reward: {episode_reward}")
+                print(f"Episode {start_episode + episode}/{num_episodes}, Reward: {episode_reward}")
 
-            # Save the episode reward to the CSV file
-            with open(TRAINING_RESULTS_PATH, mode="a", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow([episode + 1, episode_reward])
+                # Append the episode reward to the CSV file with the correct episode number
+                writer.writerow([start_episode + episode, episode_reward])
 
-            # Save the model every 10 episodes
-            if (episode + 1) % 10 == 0:
-                self.save_model(MODEL_PATH)
+                # Save the model every 10 episodes
+                if (start_episode + episode) % 10 == 0:
+                    self.save_model(MODEL_PATH)
 
     def save_model(self, path):
         torch.save(self.policy_net.state_dict(), path)
