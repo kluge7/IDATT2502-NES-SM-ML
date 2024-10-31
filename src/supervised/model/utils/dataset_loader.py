@@ -51,7 +51,7 @@ def get_actions(input_integer: int) -> list:
     return sorted(active_actions)
 
 
-def get_train_test_data(data_dir: str) -> tuple[torch.Tensor, list]:
+def load_dataset(data_dir: str) -> tuple[torch.Tensor, list]:
     images = []
     labels = []
 
