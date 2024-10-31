@@ -5,9 +5,6 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from nes_py.wrappers import JoypadSpace
 from torch import nn, optim
 
-# Laste dataene i modellene
-
-# Dataene some skal bruke is modelen
 train_loader = []
 
 

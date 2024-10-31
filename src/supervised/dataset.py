@@ -3,6 +3,8 @@ import os
 import re
 from pathlib import Path
 
+import cv2
+import numpy as np
 from PIL import Image
 from torchvision import transforms
 
@@ -102,3 +104,15 @@ def read_sort_and_write_csv(file_path: str) -> None:
         writer = csv.DictWriter(csv_file, fieldnames=reader.fieldnames)
         writer.writeheader()
         writer.writerows(sorted_data)
+
+
+def convert_to_grayscale(image: np.ndarray) -> np.ndarray:
+    """Convert an RGB image to grayscale.
+
+    Args:
+        image (np.ndarray): The RGB image to convert.
+
+    Returns:
+        np.ndarray: The grayscale version of the image.
+    """
+    return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
