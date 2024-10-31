@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from src.environment.environment2 import create_env
+from src.environment.environment import create_env
 from src.ddqn.dqn_model import DQN
 
 MODEL_PATH = "model/ddqn_model.pth"
@@ -26,12 +26,12 @@ class DDQNAgent:
             gamma=0.99,
             lr=0.001,
             hard_update=2000,
-            epsilon_start=0.50,
+            epsilon_start=0.3,
             epsilon_min=0.01,
             epsilon_decay=0.995,
             update_counter=0
     ):
-        self.state_dim = state_dim  # Expected shape: (channels, height, width)
+        self.state_dim = state_dim
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
