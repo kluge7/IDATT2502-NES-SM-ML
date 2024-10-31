@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from src.environment.environment import create_env
+from src.environment.environment_2 import create_env
 from src.ddqn.dqn_model import DQN
 
 MODEL_PATH = "model/ddqn_model.pth"
@@ -23,10 +23,10 @@ class DDQNAgent:
             action_dim,
             replay_buffer_size=100000,
             batch_size=32,
-            gamma=0.95,
-            lr=0.00025,
+            gamma=0.99,
+            lr=0.001,
             tau=0.005,
-            epsilon_start=1.0,
+            epsilon_start=0.05,
             epsilon_min=0.01,
             epsilon_decay=0.995
     ):
