@@ -4,11 +4,11 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.torch_version
 from PIL import Image
 from torchvision import transforms
 
 # Directory with images
-data_dir = "src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
 
 action_map = {
     7: "A",
@@ -64,7 +64,9 @@ def get_action_from_bit(actions: list) -> list:
     return action_keys
 
 
-def load_dataset(data_dir=data_dir) -> tuple[torch.Tensor, list]:
+def load_dataset(
+    data_dir="src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win",
+) -> tuple[torch.Tensor, list]:
     images = []
     labels = []
 
@@ -92,3 +94,27 @@ def load_dataset(data_dir=data_dir) -> tuple[torch.Tensor, list]:
 
     images = torch.stack(images)
     return images, labels
+
+
+def split_dataset(
+    images: torch.Tensor, labels: list, split_percent: float
+) -> tuple[torch.Tensor, torch.Tensor, list, list]:
+    if images.size(0) != len(labels):
+        raise ValueError("Number of images and labels do not match.")
+
+    if not 0 < split_percent < 1:
+        raise ValueError("split_percent must be between 0 and 1 (exclusive).")
+
+    split_index = int(len(labels) * split_percent)
+
+    if split_index == 0 or split_index == len(labels):
+        raise ValueError(
+            f"Invalid split_percent: {split_percent}. It results in an empty set."
+        )
+
+    training_images, test_images = torch.split(
+        images, [split_index, len(labels) - split_index]
+    )
+    training_labels, test_labels = labels[:split_index], labels[split_index:]
+
+    return training_images, test_images, training_labels, test_labels
