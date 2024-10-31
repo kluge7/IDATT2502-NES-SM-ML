@@ -51,7 +51,20 @@ def get_actions(input_integer: int) -> list:
     return sorted(active_actions)
 
 
-def load_dataset(data_dir: str) -> tuple[torch.Tensor, list]:
+def get_action_from_bit(actions: list) -> list:
+    action_keys = []
+    for action in actions:
+        action_comb = []
+        binary = format(int(action[0]), "08b")
+        str_binary = str(binary)
+        for i in range(len(str_binary)):
+            if str_binary[i] == "1":
+                action_comb.append(i)
+        action_keys.append(action_comb)
+    return action_keys
+
+
+def load_dataset(data_dir=data_dir) -> tuple[torch.Tensor, list]:
     images = []
     labels = []
 
