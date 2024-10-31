@@ -1,4 +1,6 @@
 import collections
+import os
+import subprocess as sp
 
 import cv2
 import gym
@@ -97,3 +99,116 @@ class NormalizePixels(gym.ObservationWrapper):
 
     def observation(self, obs):
         return np.array(obs).astype(np.float32) / 255.0
+
+
+# Some commands to install ffmpeg I guess:
+# ---------------------------------------
+# iwr -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip; `
+# Expand-Archive -Path ffmpeg.zip -DestinationPath .; `
+# Move-Item -Path .\ffmpeg-* -Destination .\ffmpeg; `
+# $env:Path += ";$PWD\ffmpeg\bin"; `
+# rm ffmpeg.zip
+
+
+import numpy as np
+
+
+class Monitor:
+    def __init__(self, width, height, saved_path="output"):
+        """Initializes ffmpeg video recording for the environment."""
+        # Path to the ffmpeg executable in your project structure
+        ffmpeg_path = os.path.join("..", "..", "ffmpeg", "bin", "ffmpeg.exe")
+
+        # Define the ffmpeg command to start recording
+        self.command = [
+            ffmpeg_path,
+            "-y",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-s",
+            f"{width}X{height}",
+            "-pix_fmt",
+            "rgb24",
+            "-r",
+            "60",
+            "-i",
+            "-",
+            "-an",
+            "-vcodec",
+            "mpeg4",
+            saved_path,
+        ]
+
+        try:
+            # Start the ffmpeg process safely
+            self.pipe = sp.Popen(  # noqa: S603
+                self.command,
+                stdin=sp.PIPE,
+                stderr=sp.PIPE,
+                executable=ffmpeg_path,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(
+                "ffmpeg not found. Please ensure ffmpeg is in the specified directory."
+            ) from e
+
+    def record(self, image_array):
+        """Writes a frame to the video file."""
+        if not hasattr(self, "pipe") or self.pipe is None:
+            raise RuntimeError(
+                "ffmpeg process is not initialized. Unable to record video."
+            )
+        try:
+            # Write image data to the pipe as bytes
+            self.pipe.stdin.write(image_array.tobytes())
+        except BrokenPipeError as e:
+            error_output = self.pipe.stderr.read().decode()
+            print("ffmpeg error:", error_output)
+            raise RuntimeError(
+                "ffmpeg terminated unexpectedly. Check the ffmpeg command and input frames."
+            ) from e
+
+    def close(self):
+        """Closes the ffmpeg video writer properly."""
+        if self.pipe:
+            self.pipe.stdin.close()
+            self.pipe.wait()
+
+
+class CustomReward(gym.RewardWrapper):
+    """A custom reward wrapper that modifies rewards based on game score and level completion."""
+
+    def __init__(self, env=None, monitor=None):
+        super().__init__(env)
+        self.monitor = monitor
+        self.curr_score = 0
+
+    def step(self, action):
+        # Perform the action in the environment
+        state, reward, done, info = self.env.step(action)
+
+        # Optionally record the state if a monitor is provided
+        if self.monitor:
+            self.monitor.record(state)
+
+        # Update the reward based on score differences
+        score_diff = info.get("score", 0) - self.curr_score
+        reward += score_diff / 40.0
+        self.curr_score = info.get("score", 0)
+
+        # Additional rewards/penalties for completion or failure
+        if done:
+            if info.get("flag_get", False):
+                reward += 50  # Reward for completing the level
+            else:
+                reward -= 50  # Penalty for failing the level
+
+        # Normalize reward
+        return state, reward, done, info
+
+    def reset(self, **kwargs):
+        # Reset the score tracker
+        self.curr_score = 0
+        return self.env.reset(**kwargs)
