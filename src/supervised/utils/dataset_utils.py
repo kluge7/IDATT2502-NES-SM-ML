@@ -96,7 +96,7 @@ def load_dataset(
     return images, labels
 
 
-def split_dataset(
+def train_test_spit(
     images: torch.Tensor, labels: list, split_percent: float
 ) -> tuple[torch.Tensor, torch.Tensor, list, list]:
     if images.size(0) != len(labels):
