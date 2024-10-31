@@ -73,12 +73,13 @@ def process_frame(frame):
 
 
 class CustomReward3(gym.Wrapper):
-    def __init__(self, env=None, monitor=None, stuck_threshold=150, stuck_penalty=-10):
+    def __init__(self, env=None, monitor=None, stuck_threshold=400, stuck_penalty=-10):
         super().__init__(env)
         self.monitor = monitor
         self.stuck_threshold = stuck_threshold
         self.stuck_penalty = stuck_penalty  # Penalty for getting stuck
         self.prev_x_pos = 0
+        self.max_x_pos = 0
         self.stuck_counter = 0
 
     def step(self, action):
@@ -99,7 +100,7 @@ class CustomReward3(gym.Wrapper):
         current_x_pos = info.get("x_pos", 0)
 
         # Increment stuck counter if no progress; reset if moving forward
-        if current_x_pos <= self.prev_x_pos:
+        if current_x_pos <= self.max_x_pos:
             self.stuck_counter += 1
         else:
             self.stuck_counter = 0  # Reset counter if forward progress is made
@@ -108,15 +109,20 @@ class CustomReward3(gym.Wrapper):
         if self.stuck_counter >= self.stuck_threshold:
             reward += self.stuck_penalty  # Apply penalty for getting stuck
             done = True  # Force end the episode
+            print("Died by idling")
 
         # Update previous x position
         self.prev_x_pos = current_x_pos
+
+        if current_x_pos > self.max_x_pos:
+            self.max_x_pos = current_x_pos
 
         return state, reward, done, info
 
     def reset(self):
         self.prev_x_pos = 0  # Reset x position tracking
         self.stuck_counter = 0  # Reset stuck counter
+        self.max_x_pos = 0
         return process_frame(self.env.reset())
 
 

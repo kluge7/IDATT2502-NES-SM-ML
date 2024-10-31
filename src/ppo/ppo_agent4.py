@@ -211,7 +211,7 @@ class PPOAgent:
 class Opt:
     """Options for training hyperparameters."""
 
-    lr = 0.0001
+    lr = 0.001
     gamma = 0.99
     tau = 0.95
     epsilon = 0.1
@@ -236,14 +236,14 @@ def main():
 
     agent.model.load_state_dict(
         torch.load(
-            "training_results/model_episode_100.pth", map_location=torch.device("cpu")
+            "training_results/model_episode_200.pth", map_location=torch.device("cpu")
         )
     )
 
     # Train the agent with logging, model saving, and optional rendering
     agent.train(
         env,
-        num_episodes=100,
+        num_episodes=1000,
         output_path="training_results",
         output_csv=specification + ".csv",
         render=True,
