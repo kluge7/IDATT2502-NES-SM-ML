@@ -1,38 +1,29 @@
-import gym
+import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from nes_py.wrappers import JoypadSpace
-from wrappers import (
-    ClipRewardEnv,
-    FrameStack,
-    FrameToTensor,
-    GrayScaleObservation,
-    PixelNormalize,
-    ResizeObservation,
-    SkipFrame,
+
+from src.environment.wrappers import (
+    ActionRepeat,
+    ConvertToTensor,
+    CustomReward,
+    Monitor,
+    NormalizePixels,
+    ObservationBuffer,
+    ResizeAndGrayscale,
 )
 
 
-def create_env(map="SuperMarioBros-v0", skip=4):
-    """Create a Super Mario environment with appropriate wrappers for RL."""
-    env = gym.make(map)
-    env = SkipFrame(env, skip=skip)
-    env = GrayScaleObservation(env)
-    env = ResizeObservation(env, shape=(84, 84))
-    env = PixelNormalize(env)
-    env = FrameStack(env, 4)
-    env = FrameToTensor(env)
-    env = ClipRewardEnv(env)
-    env = JoypadSpace(env, SIMPLE_MOVEMENT)
+def create_env(map="SuperMarioBros-v0", action_repeat=4, output_path=None):
+    """Sets up the Super Mario Bros environment with customized wrappers."""
+    env = JoypadSpace(gym_super_mario_bros.make(map), SIMPLE_MOVEMENT)
+    if output_path is not None:
+        monitor = Monitor(width=256, height=240, saved_path=output_path)
+    else:
+        monitor = None
+    env = CustomReward(env, monitor=monitor)
+    env = ActionRepeat(env, action_repeat)
+    env = ResizeAndGrayscale(env)
+    env = ConvertToTensor(env)
+    env = ObservationBuffer(env, 4)
+    env = NormalizePixels(env)
     return env
-
-
-env = create_env()
-
-done = True
-for _step in range(5000):
-    if done:
-        state = env.reset()
-    state, reward, done, info = env.step(env.action_space.sample())
-    env.render()
-
-env.close()
