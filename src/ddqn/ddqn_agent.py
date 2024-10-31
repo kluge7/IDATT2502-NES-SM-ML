@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from src.environment.environment_2 import create_env
+from src.environment.environment2 import create_env
 from src.ddqn.dqn_model import DQN
 
 MODEL_PATH = "model/ddqn_model.pth"
@@ -25,19 +25,21 @@ class DDQNAgent:
             batch_size=32,
             gamma=0.99,
             lr=0.001,
-            tau=0.005,
-            epsilon_start=0.05,
+            hard_update=2000,
+            epsilon_start=0.50,
             epsilon_min=0.01,
-            epsilon_decay=0.995
+            epsilon_decay=0.995,
+            update_counter=0
     ):
         self.state_dim = state_dim  # Expected shape: (channels, height, width)
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
-        self.tau = tau
         self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.hard_update = hard_update
+        self.update_counter = update_counter
 
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,13 +100,10 @@ class DDQNAgent:
         loss.backward()
         self.optimizer.step()
 
-        # Perform soft update on target network
-        self.soft_update_target_network()
-
-    def soft_update_target_network(self):
-        """Softly updates the target network by blending it with the policy network."""
-        for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
-            target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
+        # Perform hard update on target network
+        self.update_counter += 1
+        if self.update_counter % self.hard_update == 0:
+            self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def train(self, env, num_episodes):
         os.makedirs("model", exist_ok=True)
