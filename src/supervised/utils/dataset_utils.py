@@ -8,7 +8,7 @@ from PIL import Image
 from torchvision import transforms
 
 # Directory with images
-data_dir = "src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
+data_dir = "C:/Users/ander/project-machine/IDATT2502-NES-SM-ML/data-smb/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
 
 action_map = {
     7: "A",
@@ -87,8 +87,54 @@ def load_dataset(data_dir=data_dir) -> tuple[torch.Tensor, list]:
             images.append(img_tensor)
 
             action = parse_filename_to_action(filename)
-            label = get_actions(action)
-            labels.append(label)
+            # label = get_actions(action)
+            labels.append(action)
 
     images = torch.stack(images)
     return images, labels
+
+
+def get_actions_list():
+    actions = []
+    for filename in os.listdir(data_dir):
+        action_ = re.findall("%([0-9]+)", filename.lower())
+        actions.append(action_)
+    return actions
+
+
+# Generate all possible combinations
+def generate_action_combinations(action_map):
+    n = len(action_map)
+    all_combinations = []
+
+    for i in range(1, 2**n):
+        combination = []
+        binary_representation = format(
+            i, f"0{n}b"
+        )  # binary representation with leading zeros
+        for idx, bit in enumerate(reversed(binary_representation)):
+            if bit == "1":
+                combination.append(action_map[idx])
+        all_combinations.append(combination)
+
+    return all_combinations
+
+
+# Call the function
+combinations = generate_action_combinations(action_map)
+for combo in combinations:
+    print(combo)
+
+import pandas as pd
+
+# Create DataFrame
+df_combinations = pd.DataFrame(columns=action_map.values())
+
+# Fill DataFrame
+rows = []
+for combo in combinations:
+    row = {action: (1 if action in combo else 0) for action in action_map.values()}
+    rows.append(row)
+    df_combinations = pd.concat(
+        [df_combinations, pd.DataFrame(rows)], ignore_index=True
+    )
