@@ -21,12 +21,12 @@ class DDQNAgent:
             self,
             state_dim,
             action_dim,
-            replay_buffer_size=100000,
+            replay_buffer_size=50000,
             batch_size=32,
             gamma=0.99,
-            lr=0.001,
+            lr=0.0005,
             hard_update=2000,
-            epsilon_start=0.3,
+            epsilon_start=0.01,
             epsilon_min=0.01,
             epsilon_decay=0.995,
             update_counter=0
@@ -42,23 +42,29 @@ class DDQNAgent:
         self.update_counter = update_counter
 
         # Set device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
 
         # Initialize main and target networks
         self.policy_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net = DQN(state_dim, action_dim).to(self.device)
+        if next(self.policy_net.parameters()).is_cuda:
+            print("Using CUDA for model training.")
+        else:
+            print("Not using CUDA; training on CPU.")
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
         # Optimizer
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr, weight_decay=1e-3)
 
         # Experience replay buffer
         self.replay_buffer = deque(maxlen=replay_buffer_size)
 
     def select_action(self, state):
         if random.random() < self.epsilon:
-            return random.randint(0, self.action_dim - 1)
+            weights = [0.05, 0.2, 0.25, 0.2, 0.2, 0.1, 0.05]
+            action = random.choices(range(self.action_dim), weights=weights)[0]
+            return action
         else:
             with torch.no_grad():
                 state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(
@@ -98,6 +104,7 @@ class DDQNAgent:
         loss = F.mse_loss(q_values, target_q_values)
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
         # Perform hard update on target network
@@ -210,7 +217,7 @@ def main():
     agent.populate_replay_buffer(env, initial_size=10000)
 
     # Train the agent
-    num_episodes = 10000  # Adjust as needed
+    num_episodes = 50000  # Adjust as needed
     agent.train(env, num_episodes)
 
     # Save the trained model

@@ -14,10 +14,13 @@ class DQN(nn.Module):
         # Convolutional layers
         self.conv = nn.Sequential(
             nn.Conv2d(in_dim[0], 32, kernel_size=8, stride=4),  # Input channels from in_dim
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
         )
 
@@ -28,6 +31,7 @@ class DQN(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(conv_out_size, 512),
             nn.ReLU(),
+            nn.LayerNorm(512),
             nn.Linear(512, num_actions),
         )
 
