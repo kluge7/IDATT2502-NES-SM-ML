@@ -14,6 +14,7 @@ from src.ddqn.dqn_model import DQN
 
 MODEL_PATH = "model/ddqn_model.pth"
 TRAINING_RESULTS_PATH = "training_results/training_results.csv"
+REPLAY_BUFFER_PATH = "model/replay_buffer.npz"
 
 
 class DDQNAgent:
@@ -59,6 +60,7 @@ class DDQNAgent:
 
         # Experience replay buffer
         self.replay_buffer = deque(maxlen=replay_buffer_size)
+        self.load_replay_buffer()
 
     def select_action(self, state):
         if random.random() < self.epsilon:
@@ -163,6 +165,10 @@ class DDQNAgent:
                 if (start_episode + episode) % 10 == 0:
                     self.save_model(MODEL_PATH)
 
+                # Save the replay buffer every 50 episodes
+                if (start_episode + episode) % 50 == 0:
+                    self.save_replay_buffer()
+
     def save_model(self, path):
         torch.save(self.policy_net.state_dict(), path)
         print(f"Model saved to {path}")
@@ -176,6 +182,29 @@ class DDQNAgent:
         checksum = get_model_checksum(self.policy_net)
         print(f"Checksum of saved model: {checksum}")
 
+    def save_replay_buffer(self):
+        """Saves the replay buffer to a file."""
+        buffer_data = {
+            "state": [t[0] for t in self.replay_buffer],
+            "action": [t[1] for t in self.replay_buffer],
+            "reward": [t[2] for t in self.replay_buffer],
+            "next_state": [t[3] for t in self.replay_buffer],
+            "done": [t[4] for t in self.replay_buffer]
+        }
+        np.savez_compressed(REPLAY_BUFFER_PATH, **buffer_data)
+        print(f"Replay buffer saved to {REPLAY_BUFFER_PATH}")
+
+    def load_replay_buffer(self):
+        """Loads the replay buffer from a file if available."""
+        if os.path.exists(REPLAY_BUFFER_PATH):
+            data = np.load(REPLAY_BUFFER_PATH, allow_pickle=True)
+            self.replay_buffer = deque(
+                zip(data["state"], data["action"], data["reward"], data["next_state"], data["done"]),
+                maxlen=self.replay_buffer.maxlen
+            )
+            print(f"Replay buffer loaded from {REPLAY_BUFFER_PATH}")
+
+
     def populate_replay_buffer(self, env, initial_size):
         state = env.reset()
         for _ in range(initial_size):
@@ -187,6 +216,8 @@ class DDQNAgent:
                 state = env.reset()
             else:
                 state = next_state
+
+    
 
 
 def get_model_checksum(model):
