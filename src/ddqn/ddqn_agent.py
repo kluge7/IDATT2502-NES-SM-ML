@@ -24,7 +24,11 @@ class DDQNAgent:
             state_dim,
             action_dim,
             replay_buffer_size=100000,
+<<<<<<< HEAD
             batch_size=32,
+=======
+            batch_size=64,
+>>>>>>> d8a18b3 (test)
             gamma=0.99,
             lr=0.0005,
             hard_update=5000,
