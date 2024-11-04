@@ -23,7 +23,7 @@ class DDQNAgent:
             self,
             state_dim,
             action_dim,
-            replay_buffer_size=10000,
+            replay_buffer_size=100000,
             batch_size=32,
             gamma=0.99,
             lr=0.0005,
