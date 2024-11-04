@@ -8,7 +8,11 @@ import torch.torch_version
 from PIL import Image
 from torchvision import transforms
 
-data_dir = "C:/Users/ander/project-machine/IDATT2502-NES-SM-ML/data-smb/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
+py_file = os.path.abspath(__file__)  # path to main.py
+py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
+data_folder = os.path.join(
+    py_dir, "data-smb/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
+)  # path to info.txt
 
 action_map = {
     7: "A",
@@ -65,7 +69,7 @@ def get_action_from_bit(actions: list) -> list:
 
 
 def load_dataset(
-    data_dir="src/supervised/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win",
+    data_dir=data_folder,
 ) -> tuple[torch.Tensor, list]:
     images = []
     labels = []
@@ -98,7 +102,7 @@ def load_dataset(
 
 def get_actions_list():
     actions = []
-    for filename in os.listdir(data_dir):
+    for filename in os.listdir(data_folder):
         action_ = re.findall("%([0-9]+)", filename.lower())
         actions.append(action_)
     return actions
