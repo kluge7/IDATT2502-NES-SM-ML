@@ -11,3 +11,4 @@ pillow==11.0.0
 pre-commit
 torch==2.5.0
 torchvision==0.20.0
+scikit-learn==1.5.2
