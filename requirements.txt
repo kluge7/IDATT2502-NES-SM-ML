@@ -6,6 +6,8 @@ nes-py==8.2.1
 numpy==1.26.4
 opencv-python==4.10.0.84
 pre-commit
-torch==2.5.0
+torch
 matplotlib==3.9.2
 pandas==2.2.3
+torchaudio
+torchvision

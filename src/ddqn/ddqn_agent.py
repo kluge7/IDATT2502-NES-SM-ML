@@ -1,10 +1,17 @@
+import os
+
+# Set environment variables for CUDA and library paths
+os.environ["LD_LIBRARY_PATH"] = "/cluster/home/andreksv/PycharmProjects/IDATT2502-NES-SM-ML/venv/lib64:/cluster/home/andreksv/PycharmProjects/IDATT2502-NES-SM-ML/venv/lib/python3.9/site-packages/nvidia/cusparse/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["NCCL_P2P_DISABLE"] = "1"
+os.environ["NCCL_DEBUG"] = "INFO"
+
+print("LD_LIBRARY_PATH:", os.environ["LD_LIBRARY_PATH"])
+
 import csv
 import hashlib
-import os
 import random
 from collections import deque
-
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -13,10 +20,8 @@ import torch.optim as optim
 from src.environment.environment import create_env
 from src.ddqn.dqn_model import DQN
 
-MODEL_PATH = "model/ddqn_model.pth"
+MODEL_PATH = "model/ddqn_model_episode_latest.pth"
 TRAINING_RESULTS_DIR = "training_results"
-REPLAY_BUFFER_PATH = "model/replay_buffer.npz"
-
 
 class DDQNAgent:
     def __init__(
@@ -24,13 +29,13 @@ class DDQNAgent:
             state_dim,
             action_dim,
             replay_buffer_size=100000,
-            batch_size=64,
+            batch_size=128,
             gamma=0.99,
-            lr=0.0005,
+            lr=0.001,
             hard_update=5000,
             epsilon_start=1.0,
             epsilon_min=0.01,
-            epsilon_decay=0.995,
+            epsilon_decay=0.999,
             update_counter=0
     ):
         self.state_dim = state_dim
@@ -58,7 +63,6 @@ class DDQNAgent:
 
         # Experience replay buffer
         self.replay_buffer = deque(maxlen=replay_buffer_size)
-        self.load_replay_buffer()
 
         # Create directory for training results
         os.makedirs(TRAINING_RESULTS_DIR, exist_ok=True)
@@ -105,7 +109,7 @@ class DDQNAgent:
         if self.update_counter % self.hard_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
-    def train(self, env, num_episodes, save_interval=50):
+    def train(self, env, num_episodes, save_interval=300):
         score_log = []
         start_episode = 1
 
@@ -115,7 +119,6 @@ class DDQNAgent:
             episode_reward = 0
 
             while not done:
-                env.render()
                 action = self.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 episode_reward += reward
@@ -128,16 +131,19 @@ class DDQNAgent:
             if self.epsilon > self.epsilon_min:
                 self.epsilon *= self.epsilon_decay
                 self.epsilon = max(self.epsilon, self.epsilon_min)
-                print("Epsilon: " + self.epsilon)
+                print(f"Epsilon: {self.epsilon}")
 
             print(f"Episode {episode}/{num_episodes}, Reward: {episode_reward}")
             score_log.append((episode, episode_reward))
+
+            if episode % 10 == 0:
+                model_filename = f"model/ddqn_model_episode_latest.pth"
+                self.save_model(model_filename)
 
             # Save the model and replay buffer periodically
             if episode % save_interval == 0:
                 model_filename = f"model/ddqn_model_episode_{episode}.pth"
                 self.save_model(model_filename)
-                self.save_replay_buffer()
                 self.save_scores(score_log, episode)
                 score_log = []
 
@@ -158,31 +164,10 @@ class DDQNAgent:
         self.target_net.load_state_dict(self.policy_net.state_dict())
         print(f"Model loaded from {path}")
 
-    def save_replay_buffer(self):
-        buffer_data = {
-            "state": [t[0] for t in self.replay_buffer],
-            "action": [t[1] for t in self.replay_buffer],
-            "reward": [t[2] for t in self.replay_buffer],
-            "next_state": [t[3] for t in self.replay_buffer],
-            "done": [t[4] for t in self.replay_buffer]
-        }
-        np.savez_compressed(REPLAY_BUFFER_PATH, **buffer_data)
-        print(f"Replay buffer saved to {REPLAY_BUFFER_PATH}")
-
-    def load_replay_buffer(self):
-        if os.path.exists(REPLAY_BUFFER_PATH):
-            data = np.load(REPLAY_BUFFER_PATH, allow_pickle=True)
-            self.replay_buffer = deque(
-                zip(data["state"], data["action"], data["reward"], data["next_state"], data["done"]),
-                maxlen=self.replay_buffer.maxlen
-            )
-            print(f"Replay buffer loaded from {REPLAY_BUFFER_PATH}")
-
     def populate_replay_buffer(self, env, initial_size=10000):
         """Populate the replay buffer with random transitions"""
         state = env.reset()
         for _ in range(initial_size):
-            env.render()
             action = random.randint(0, self.action_dim - 1)  # Random action for exploration
             next_state, reward, done, _ = env.step(action)
             self.store_transition(state, action, reward, next_state, done)
@@ -197,6 +182,10 @@ def main():
     # Create the environment
     env = create_env()
 
+    # Check CUDA and cuDNN availability
+    print("CUDA available:", torch.cuda.is_available())
+    print("cuDNN available:", torch.backends.cudnn.is_available())
+
     # Get input dimensions and number of actions
     in_dim = env.observation_space.shape  # Expected shape: (channels, height, width)
     num_actions = env.action_space.n
@@ -210,8 +199,7 @@ def main():
         print("No pre-trained model found")
 
     # Populate the replay buffer with random transitions
-    if not os.path.exists(REPLAY_BUFFER_PATH):
-        agent.populate_replay_buffer(env, initial_size=20000)
+    agent.populate_replay_buffer(env, initial_size=10000)
 
     # Train the agent
     num_episodes = 50000
