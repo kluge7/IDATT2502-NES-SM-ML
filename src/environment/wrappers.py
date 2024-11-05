@@ -195,17 +195,21 @@ class CustomReward(gym.RewardWrapper):
 
         # Update the reward based on score differences
         score_diff = info.get("score", 0) - self.curr_score
-        reward += score_diff / 40.0
+        reward += score_diff / 100.0  # Adjust scaling for smoother reward distribution
         self.curr_score = info.get("score", 0)
+
+        # Add a small reward for moving right (assuming Mario moves left to right)
+        # This encourages progress even if score doesn't increase
+        reward += info.get("x_pos", 0) / 1000.0
 
         # Additional rewards/penalties for completion or failure
         if done:
             if info.get("flag_get", False):
-                reward += 50  # Reward for completing the level
+                reward += 20  # Lowered completion reward
             else:
-                reward -= 50  # Penalty for failing the level
+                reward -= 20  # Lowered failure penalty
 
-        # Clip the reward to the range [-1, 1]
+        # Clip the reward to avoid extreme values (optional)
         reward = np.clip(reward, -1, 1)
 
         return state, reward, done, info

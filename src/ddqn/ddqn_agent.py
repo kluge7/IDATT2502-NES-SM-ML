@@ -32,10 +32,10 @@ class DDQNAgent:
             batch_size=128,
             gamma=0.99,
             lr=0.001,
-            hard_update=5000,
+            hard_update=2000,
             epsilon_start=1.0,
             epsilon_min=0.01,
-            epsilon_decay=0.999,
+            epsilon_decay=0.995,
             update_counter=0
     ):
         self.state_dim = state_dim
@@ -199,7 +199,7 @@ def main():
         print("No pre-trained model found")
 
     # Populate the replay buffer with random transitions
-    agent.populate_replay_buffer(env, initial_size=10000)
+    agent.populate_replay_buffer(env, initial_size=50000)
 
     # Train the agent
     num_episodes = 50000
