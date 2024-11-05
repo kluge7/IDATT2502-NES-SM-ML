@@ -39,7 +39,7 @@ def plot_training_results(data, window=50):
 
 if __name__ == "__main__":
     # Filepath to the training results CSV file
-    filepath = "training_results/training_results_v2.csv"
+    filepath = "training_results/training_results_episode_1800.csv"
 
     # Read and plot the data
     data = read_training_data(filepath)
