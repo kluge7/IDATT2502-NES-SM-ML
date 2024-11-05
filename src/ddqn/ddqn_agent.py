@@ -24,11 +24,7 @@ class DDQNAgent:
             state_dim,
             action_dim,
             replay_buffer_size=100000,
-<<<<<<< HEAD
-            batch_size=32,
-=======
             batch_size=64,
->>>>>>> d8a18b3 (test)
             gamma=0.99,
             lr=0.0005,
             hard_update=5000,
@@ -48,7 +44,8 @@ class DDQNAgent:
         self.update_counter = update_counter
 
         # Set device
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {self.device}")
 
         # Initialize main and target networks
         self.policy_net = DQN(state_dim, action_dim).to(self.device)
@@ -108,7 +105,7 @@ class DDQNAgent:
         if self.update_counter % self.hard_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
-    def train(self, env, num_episodes, save_interval=100):
+    def train(self, env, num_episodes, save_interval=50):
         score_log = []
         start_episode = 1
 
@@ -118,6 +115,7 @@ class DDQNAgent:
             episode_reward = 0
 
             while not done:
+                env.render()
                 action = self.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 episode_reward += reward
@@ -130,6 +128,7 @@ class DDQNAgent:
             if self.epsilon > self.epsilon_min:
                 self.epsilon *= self.epsilon_decay
                 self.epsilon = max(self.epsilon, self.epsilon_min)
+                print("Epsilon: " + self.epsilon)
 
             print(f"Episode {episode}/{num_episodes}, Reward: {episode_reward}")
             score_log.append((episode, episode_reward))
@@ -179,6 +178,21 @@ class DDQNAgent:
             )
             print(f"Replay buffer loaded from {REPLAY_BUFFER_PATH}")
 
+    def populate_replay_buffer(self, env, initial_size=10000):
+        """Populate the replay buffer with random transitions"""
+        state = env.reset()
+        for _ in range(initial_size):
+            env.render()
+            action = random.randint(0, self.action_dim - 1)  # Random action for exploration
+            next_state, reward, done, _ = env.step(action)
+            self.store_transition(state, action, reward, next_state, done)
+            state = next_state
+
+            if done:
+                state = env.reset()
+
+        print(f"Replay buffer populated with {initial_size} transitions.")
+
 def main():
     # Create the environment
     env = create_env()
@@ -197,7 +211,7 @@ def main():
 
     # Populate the replay buffer with random transitions
     if not os.path.exists(REPLAY_BUFFER_PATH):
-        agent.populate_replay_buffer(env, initial_size=10000)
+        agent.populate_replay_buffer(env, initial_size=20000)
 
     # Train the agent
     num_episodes = 50000
