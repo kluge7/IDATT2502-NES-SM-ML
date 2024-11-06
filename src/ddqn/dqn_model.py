@@ -4,7 +4,6 @@ import torch.nn as nn
 class DQN(nn.Module):
     def __init__(self, in_dim, num_actions):
         super(DQN, self).__init__()
-        
         # Convolutional layers
         self.conv = nn.Sequential(
             nn.Conv2d(in_dim[0], 32, kernel_size=8, stride=4),
@@ -15,21 +14,15 @@ class DQN(nn.Module):
             nn.ReLU(),
         )
 
-        # Compute the output size after conv layers
+        # Compute the output size after convolutional layers
         conv_out_size = self._get_conv_out(in_dim)
 
-        # Advantage and value layers
-        self.fc_adv = nn.Sequential(
-            nn.Linear(conv_out_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
-        
-        self.fc_val = nn.Sequential(
-            nn.Linear(conv_out_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-        )
+        # Separate streams for advantage and value
+        self.fc = nn.Linear(conv_out_size, 512)
+        self.q = nn.Linear(512, num_actions)
+        self.v = nn.Linear(512, 1)
+
+        self.apply(self._init_weights)
 
     def _get_conv_out(self, shape):
         with torch.no_grad():
@@ -37,12 +30,18 @@ class DQN(nn.Module):
             conv_out = self.conv(dummy_input)
             return int(conv_out.numel() / conv_out.size(0))
 
+    def _init_weights(self, m):
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                m.bias.data.fill_(0.01)
+
     def forward(self, x):
         x = x.float()  # Ensure input is float32
         conv_out = self.conv(x)
         conv_out = conv_out.view(conv_out.size(0), -1)  # Flatten
-
-        adv = self.fc_adv(conv_out)
-        val = self.fc_val(conv_out)
-        q = val + adv - adv.mean(dim=1, keepdim=True)
+        x = torch.relu(self.fc(conv_out))
+        adv = self.q(x)
+        val = self.v(x)
+        q = val + (adv - adv.mean(dim=1, keepdim=True))
         return q
