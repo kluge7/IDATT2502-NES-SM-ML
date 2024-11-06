@@ -8,45 +8,45 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from src.environment.environment import create_env
-from src.ddqn.dqn_model import DQN  # Assuming you're using the DuelingDQN model now
+from src.ddqn.dqn_model import DQN  # Assuming you're using the DuelingDQN model
 
 MODEL_PATH = "model/ddqn_model.pth"
 TRAINING_RESULTS_PATH = "training_results/training_results.csv"
 
-# Function to arrange the state for consistent input format
+# Arrange state to match the input format
 def arrange(state):
-    return np.expand_dims(np.transpose(state, (2, 0, 1)), 0)
+    if not isinstance(state, np.ndarray):
+        state = np.array(state)
+    state = np.transpose(state, (2, 0, 1))  # Transpose to (frames, height, width)
+    return state  # Keep the shape as (frames, height, width) without adding extra dimensions
+
 
 class DDQNAgent:
     def __init__(
             self,
             state_dim,
             action_dim,
-            replay_buffer_size=10000,
+            replay_buffer_size=50000,
             batch_size=256,
             gamma=0.99,
             lr=1E-5,
             hard_update=50,
-            epsilon_start=1.0,   # Start with full exploration
-            epsilon_min=0.01,    # Minimum exploration rate
-            epsilon_decay=0.995, # Decay factor for exploration
-            update_counter=0
+            epsilon_start=1.0,
+            epsilon_min=0.001,
+            epsilon_decay=0.995,
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
         self.epsilon = epsilon_start
-        self.epsilon_start = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.hard_update = hard_update
-        self.update_counter = update_counter
 
-        # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Initialize main and target networks
+        # Main and target networks
         self.policy_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -55,24 +55,24 @@ class DDQNAgent:
         # Optimizer
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr, weight_decay=1e-3)
 
-        # Experience replay buffer
+        # Replay buffer
         self.replay_buffer = deque(maxlen=replay_buffer_size)
+        self.update_counter = 0
 
     def select_action(self, state):
         if random.random() < self.epsilon:  # Exploration
-            action = random.randint(0, self.action_dim - 1)
+            return random.randint(0, self.action_dim - 1)
         else:  # Exploitation
             with torch.no_grad():
                 state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
                 q_values = self.policy_net(state)
-                action = q_values.argmax().item()
-        return action
+                return q_values.argmax().item()
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.append((state, action, reward, next_state, done))
 
     def update(self):
-        if len(self.replay_buffer) < max(2000, self.batch_size):  # Minimum replay buffer threshold
+        if len(self.replay_buffer) < max(2000, self.batch_size):
             return 0
 
         batch = random.sample(self.replay_buffer, self.batch_size)
@@ -97,6 +97,7 @@ class DDQNAgent:
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
+        # Update the target network
         self.update_counter += 1
         if self.update_counter % self.hard_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -113,8 +114,7 @@ class DDQNAgent:
                 last_line = None
                 for line in file:
                     last_line = line
-                # Skip the header line by checking if last_line contains the word "Episode"
-                if last_line is not None and "Episode" not in last_line:
+                if last_line and not last_line.startswith("Episode"):
                     start_episode = int(last_line.split(",")[0]) + 1
 
         with open(TRAINING_RESULTS_PATH, mode="a", newline="") as file:
@@ -122,7 +122,7 @@ class DDQNAgent:
             if start_episode == 1:
                 writer.writerow(["Episode", "Reward", "Average Loss", "Completed"])
 
-            for episode in range(num_episodes):
+            for episode in range(start_episode, start_episode + num_episodes):
                 state = env.reset()
                 done = False
                 episode_reward = 0
@@ -144,30 +144,24 @@ class DDQNAgent:
                     state = next_state
 
                 avg_loss = np.mean(losses) if losses else 0
-                print(f"Episode {start_episode + episode}/{num_episodes}, Reward: {episode_reward}, Avg Loss: {avg_loss:.4f}, Completed: {completed}")
-                writer.writerow([start_episode + episode, episode_reward, avg_loss, completed])
+                print(f"Episode {episode}/{num_episodes}, Reward: {episode_reward}, Avg Loss: {avg_loss:.4f}, Completed: {completed}")
+                writer.writerow([episode, episode_reward, avg_loss, completed])
 
                 # Decay epsilon
-                if self.epsilon > self.epsilon_min:
-                    self.epsilon *= self.epsilon_decay
-                    self.epsilon = max(self.epsilon, self.epsilon_min)
-                    print(f"Epsilon after decay: {self.epsilon}")
+                self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
+                print(f"Epsilon after decay: {self.epsilon}")
 
-                if (start_episode + episode) % 100 == 0:
+                if episode % 100 == 0:
                     self.save_model(MODEL_PATH)
 
     def save_model(self, path):
         torch.save(self.policy_net.state_dict(), path)
         print(f"Model saved to {path}")
-        checksum = get_model_checksum(self.policy_net)
-        print(f"Checksum of saved model: {checksum}")
 
     def load_model(self, path):
         self.policy_net.load_state_dict(torch.load(path, map_location=self.device))
         self.target_net.load_state_dict(self.policy_net.state_dict())
         print(f"Model loaded from {path}")
-        checksum = get_model_checksum(self.policy_net)
-        print(f"Checksum of saved model: {checksum}")
 
     def populate_replay_buffer(self, env, initial_size):
         state = env.reset()
@@ -176,12 +170,6 @@ class DDQNAgent:
             next_state, reward, done, _ = env.step(action)
             self.store_transition(state, action, reward, next_state, done)
             state = env.reset() if done else next_state
-
-def get_model_checksum(model):
-    md5 = hashlib.md5()
-    for param in model.parameters():
-        md5.update(param.detach().cpu().numpy().tobytes())
-    return md5.hexdigest()
 
 def main():
     env = create_env()
