@@ -1,17 +1,9 @@
-import os
-
-# Set environment variables for CUDA and library paths
-os.environ["LD_LIBRARY_PATH"] = "/cluster/home/andreksv/PycharmProjects/IDATT2502-NES-SM-ML/venv/lib64:/cluster/home/andreksv/PycharmProjects/IDATT2502-NES-SM-ML/venv/lib/python3.9/site-packages/nvidia/cusparse/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["NCCL_P2P_DISABLE"] = "1"
-os.environ["NCCL_DEBUG"] = "INFO"
-
-print("LD_LIBRARY_PATH:", os.environ["LD_LIBRARY_PATH"])
-
 import csv
 import hashlib
+import os
 import random
 from collections import deque
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -20,22 +12,22 @@ import torch.optim as optim
 from src.environment.environment import create_env
 from src.ddqn.dqn_model import DQN
 
-MODEL_PATH = "model/ddqn_model_episode_latest.pth"
-TRAINING_RESULTS_DIR = "training_results"
+MODEL_PATH = "model/ddqn_model.pth"
+TRAINING_RESULTS_PATH = "training_results/training_results.csv"
 
 class DDQNAgent:
     def __init__(
             self,
             state_dim,
             action_dim,
-            replay_buffer_size=100000,
+            replay_buffer_size=10000,
             batch_size=64,
             gamma=0.99,
-            lr=0.0001,
-            hard_update=5000,
-            epsilon_start=0.1,
+            lr=1E-5,
+            hard_update=2000,
+            epsilon_start=1.0,
             epsilon_min=0.01,
-            epsilon_decay=0.995,
+            epsilon_decay=0.999,
             update_counter=0
     ):
         self.state_dim = state_dim
@@ -49,12 +41,15 @@ class DDQNAgent:
         self.update_counter = update_counter
 
         # Set device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
+        self.device = torch.device("cuda")
 
         # Initialize main and target networks
         self.policy_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net = DQN(state_dim, action_dim).to(self.device)
+        if next(self.policy_net.parameters()).is_cuda:
+            print("Using CUDA for model training.")
+        else:
+            print("Not using CUDA; training on CPU.")
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -64,12 +59,11 @@ class DDQNAgent:
         # Experience replay buffer
         self.replay_buffer = deque(maxlen=replay_buffer_size)
 
-        # Create directory for training results
-        os.makedirs(TRAINING_RESULTS_DIR, exist_ok=True)
-
     def select_action(self, state):
         if random.random() < self.epsilon:
-            return random.randint(0, self.action_dim - 1)
+            weights = [0.05, 0.2, 0.25, 0.2, 0.2, 0.1, 0.05]
+            action = random.choices(range(self.action_dim), weights=weights)[0]
+            return action
         else:
             with torch.no_grad():
                 state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
@@ -81,116 +75,137 @@ class DDQNAgent:
 
     def update(self):
         if len(self.replay_buffer) < self.batch_size:
-            return
+            return 0  # Return zero loss if there's not enough data
 
+        # Sample a batch from the replay buffer
         batch = random.sample(self.replay_buffer, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
+        # Convert to tensors
         states = torch.tensor(np.array(states), dtype=torch.float32).to(self.device)
         actions = torch.tensor(actions, dtype=torch.long).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
         next_states = torch.tensor(np.array(next_states), dtype=torch.float32).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
+        # Compute Q(s, a) with policy network
         q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
+        # Compute target Q-values using DDQN
         with torch.no_grad():
             next_actions = self.policy_net(next_states).argmax(dim=1)
             next_q_values = self.target_net(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
             target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
 
+        # Compute loss and optimize the policy network
         loss = F.mse_loss(q_values, target_q_values)
         self.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
+        # Perform hard update on target network
         self.update_counter += 1
         if self.update_counter % self.hard_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
-    def train(self, env, num_episodes, save_interval=300):
-        score_log = []
+        return loss.item()
+
+    def train(self, env, num_episodes):
+        os.makedirs("model", exist_ok=True)
+        os.makedirs("training_results", exist_ok=True)
+
         start_episode = 1
+        if os.path.isfile(TRAINING_RESULTS_PATH):
+            with open(TRAINING_RESULTS_PATH, mode="r") as file:
+                last_line = None
+                for last_line in file:
+                    pass
+                if last_line is not None and last_line.strip():
+                    start_episode = int(last_line.split(",")[0]) + 1
 
-        for episode in range(start_episode, num_episodes + 1):
-            state = env.reset()
-            done = False
-            episode_reward = 0
-
-            while not done:
-                action = self.select_action(state)
-                next_state, reward, done, info = env.step(action)
-                episode_reward += reward
-
-                self.store_transition(state, action, reward, next_state, done)
-                self.update()
-                state = next_state
-
-            # Decay epsilon
-            if self.epsilon > self.epsilon_min:
-                self.epsilon *= self.epsilon_decay
-                self.epsilon = max(self.epsilon, self.epsilon_min)
-                print(f"Epsilon: {self.epsilon}")
-
-            print(f"Episode {episode}/{num_episodes}, Reward: {episode_reward}")
-            score_log.append((episode, episode_reward))
-
-            if episode % 10 == 0:
-                model_filename = f"model/ddqn_model_episode_latest.pth"
-                self.save_model(model_filename)
-
-            # Save the model and replay buffer periodically
-            if episode % save_interval == 0:
-                model_filename = f"model/ddqn_model_episode_{episode}.pth"
-                self.save_model(model_filename)
-                self.save_scores(score_log, episode)
-                score_log = []
-
-    def save_scores(self, scores, episode):
-        filename = os.path.join(TRAINING_RESULTS_DIR, f"training_results_episode_{episode}.csv")
-        with open(filename, mode="w", newline="") as file:
+        with open(TRAINING_RESULTS_PATH, mode="a", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Episode", "Reward"])
-            writer.writerows(scores)
-        print(f"Scores saved to {filename}")
+            if start_episode == 1:
+                writer.writerow(["Episode", "Reward", "Average Loss", "Completed"])
+
+            for episode in range(num_episodes):
+                state = env.reset()
+                done = False
+                episode_reward = 0
+                losses = []
+                completed = False
+
+                while not done:
+                    action = self.select_action(state)
+                    next_state, reward, done, info = env.step(action)
+                    episode_reward += reward
+                    self.store_transition(state, action, reward, next_state, done)
+
+                    # Update and collect loss for this step
+                    loss = self.update()
+                    losses.append(loss)
+
+                    # Check if the environment was completed
+                    if done and "flag_get" in info:  # Assuming completion indicated by "flag_get"
+                        completed = bool(info["flag_get"])
+
+                    state = next_state
+
+                # Decay epsilon
+                if self.epsilon > self.epsilon_min:
+                    self.epsilon *= self.epsilon_decay
+                    self.epsilon = max(self.epsilon, self.epsilon_min)
+                    print(f"Epsilon after decay: {self.epsilon}")
+
+                # Calculate average loss for the episode
+                avg_loss = np.mean(losses) if losses else 0
+
+                print(f"Episode {start_episode + episode}/{num_episodes}, Reward: {episode_reward}, Avg Loss: {avg_loss:.4f}, Completed: {completed}")
+
+                # Log episode data to file
+                writer.writerow([start_episode + episode, episode_reward, avg_loss, completed])
+
+                # Save model every 100 episodes
+                if (start_episode + episode) % 100 == 0:
+                    self.save_model(MODEL_PATH)
 
     def save_model(self, path):
         torch.save(self.policy_net.state_dict(), path)
         print(f"Model saved to {path}")
+        checksum = get_model_checksum(self.policy_net)
+        print(f"Checksum of saved model: {checksum}")
 
     def load_model(self, path):
         self.policy_net.load_state_dict(torch.load(path, map_location=self.device))
         self.target_net.load_state_dict(self.policy_net.state_dict())
         print(f"Model loaded from {path}")
+        checksum = get_model_checksum(self.policy_net)
+        print(f"Checksum of saved model: {checksum}")
 
-    def populate_replay_buffer(self, env, initial_size=10000):
-        """Populate the replay buffer with random transitions"""
+    def populate_replay_buffer(self, env, initial_size):
         state = env.reset()
         for _ in range(initial_size):
-            action = random.randint(0, self.action_dim - 1)  # Random action for exploration
+            action = random.randint(0, self.action_dim - 1)
             next_state, reward, done, _ = env.step(action)
             self.store_transition(state, action, reward, next_state, done)
-            state = next_state
-
             if done:
                 state = env.reset()
+            else:
+                state = next_state
 
-        print(f"Replay buffer populated with {initial_size} transitions.")
+def get_model_checksum(model):
+    """Returns a checksum of the model's parameters."""
+    md5 = hashlib.md5()
+    for param in model.parameters():
+        md5.update(param.detach().cpu().numpy().tobytes())
+    return md5.hexdigest()
 
 def main():
-    # Create the environment
     env = create_env()
-
-    # Check CUDA and cuDNN availability
-    print("CUDA available:", torch.cuda.is_available())
-    print("cuDNN available:", torch.backends.cudnn.is_available())
-
-    # Get input dimensions and number of actions
-    in_dim = env.observation_space.shape  # Expected shape: (channels, height, width)
+    in_dim = env.observation_space.shape
     num_actions = env.action_space.n
 
-    # Initialize the DDQN agent
     agent = DDQNAgent(state_dim=in_dim, action_dim=num_actions)
 
     if os.path.exists(MODEL_PATH):
@@ -198,16 +213,10 @@ def main():
     else:
         print("No pre-trained model found")
 
-    # Populate the replay buffer with random transitions
-    agent.populate_replay_buffer(env, initial_size=50000)
-
-    # Train the agent
+    agent.populate_replay_buffer(env, initial_size=10000)
     num_episodes = 50000
     agent.train(env, num_episodes)
-
-    # Save the trained model
     agent.save_model(MODEL_PATH)
-
 
 if __name__ == "__main__":
     main()
