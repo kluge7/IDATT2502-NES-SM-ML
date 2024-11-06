@@ -1,192 +1,208 @@
-import csv
-import hashlib
-import os
+import math
 import random
-from collections import deque
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
+
 from src.environment.environment import create_env
-from src.ddqn.dqn_model import DQN
+from collections import deque, namedtuple
+from typing import Tuple
 
-MODEL_PATH = "model/ddqn_model.pth"
-TRAINING_RESULTS_PATH = "training_results/training_results.csv"
 
-class DDQNAgent:
+# Define the Q-Network architecture
+class QNetwork(nn.Module):
+    def __init__(self, input_channels: int, action_size: int):
+        super(QNetwork, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),  # Output: (32, 20, 20)
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),  # Output: (64, 9, 9)
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),  # Output: (64, 7, 7)
+            nn.ReLU()
+        )
+        self.fc = nn.Sequential(
+            nn.Linear(64 * 7 * 7, 512),
+            nn.ReLU(),
+            nn.Linear(512, action_size)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+
+# Define a named tuple for storing experiences in the replay memory
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'reward', 'next_state', 'done'))
+
+
+# Define the Replay Memory class
+class ReplayMemory:
+    def __init__(self, capacity: int):
+        self.memory = deque(maxlen=capacity)
+
+    def push(self, *args):
+        """Save a transition."""
+        self.memory.append(Transition(*args))
+
+    def sample(self, batch_size: int):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
+
+
+# Define the DDQN Agent
+class DQNAgent:
     def __init__(
             self,
-            state_dim,
-            action_dim,
-            replay_buffer_size=50000,
-            batch_size=256,
-            gamma=0.99,
-            lr=1E-4,
-            hard_update=50,
-            epsilon=1.0,
-            epsilon_decay=0.995,
-            epsilon_min=0.01,
-            update_counter=0
+            state_shape: Tuple[int],
+            action_size: int,
+            device: torch.device,
+            gamma: float = 0.99,
+            batch_size: int = 32,
+            lr: float = 1e-4,
+            replay_memory_size: int = 100000,
+            target_update_frequency: int = 1000,
+            epsilon_start: float = 1.0,
+            epsilon_end: float = 0.1,
+            epsilon_decay: int = 1000000,
+            save_path: str = 'dqn_model.pth'  # Path to save the model
     ):
-        self.state_dim = state_dim
-        self.action_dim = action_dim
+        self.device = device
+        self.action_size = action_size
         self.batch_size = batch_size
         self.gamma = gamma
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-        self.epsilon_min = epsilon_min
-        self.hard_update = hard_update
-        self.update_counter = update_counter
 
-        # Set device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # Initialize main and target networks
-        self.policy_net = DQN(state_dim, action_dim).to(self.device)
-        self.target_net = DQN(state_dim, action_dim).to(self.device)
+        # Initialize networks
+        self.policy_net = QNetwork(state_shape[0], action_size).to(device)
+        self.target_net = QNetwork(state_shape[0], action_size).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-        # Optimizer
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
 
-        # Experience replay buffer
-        self.replay_buffer = deque(maxlen=replay_buffer_size)
+        # Replay memory
+        self.memory = ReplayMemory(replay_memory_size)
+
+        # Epsilon parameters for epsilon-greedy policy
+        self.steps_done = 0
+        self.epsilon_start = epsilon_start
+        self.epsilon_end = epsilon_end
+        self.epsilon_decay = epsilon_decay
+
+        # Target network update frequency
+        self.target_update_frequency = target_update_frequency
+
+        # Model saving parameters
+        self.save_path = save_path
 
     def select_action(self, state):
-        if random.random() < self.epsilon:
-            return random.randint(0, self.action_dim - 1)
+        """Selects an action using an epsilon-greedy policy."""
+        eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
+                        math.exp(-1. * self.steps_done / self.epsilon_decay)
+        self.steps_done += 1
+        if random.random() < eps_threshold:
+            return random.randrange(self.action_size)
         else:
             with torch.no_grad():
-                state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
+                state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
                 q_values = self.policy_net(state)
-                return q_values.argmax().item()
+                return q_values.max(1)[1].item()
 
-    def store_transition(self, state, action, reward, next_state, done):
-        self.replay_buffer.append((state, action, reward, next_state, done))
+    def optimize_model(self):
+        """Performs a single optimization step."""
+        if len(self.memory) < self.batch_size:
+            return
 
-    def update(self):
-        if len(self.replay_buffer) < max(2000, self.batch_size):
-            return 0
+        transitions = self.memory.sample(self.batch_size)
+        batch = Transition(*zip(*transitions))
 
-        # Sample a batch from the replay buffer
-        batch = random.sample(self.replay_buffer, self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
+        # Convert batch elements to tensors
+        state_batch = torch.stack(batch.state).to(self.device)
+        action_batch = torch.tensor(batch.action, device=self.device).unsqueeze(1)
+        reward_batch = torch.tensor(batch.reward, device=self.device)
+        next_state_batch = torch.stack(batch.next_state).to(self.device)
+        done_batch = torch.tensor(batch.done, device=self.device, dtype=torch.float32)
 
-        # Convert to tensors
-        states = torch.tensor(np.array(states), dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.long).to(self.device)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+        # Compute Q(s_t, a_t)
+        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
 
-        # Compute Q(s, a) with policy network
-        q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
-
-        # Compute target Q-values using Double Q-learning
+        # Compute Q targets for next states using Double DQN
         with torch.no_grad():
-            next_actions = self.policy_net(next_states).argmax(dim=1)
-            next_q_values = self.target_net(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
-            target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
+            next_actions = self.policy_net(next_state_batch).max(1)[1].unsqueeze(1)
+            next_state_values = self.target_net(next_state_batch).gather(1, next_actions).squeeze(1)
+            expected_state_action_values = reward_batch + self.gamma * next_state_values * (1 - done_batch)
 
         # Compute loss
-        loss = F.smooth_l1_loss(q_values, target_q_values)
+        loss = F.smooth_l1_loss(state_action_values.squeeze(1), expected_state_action_values)
+
+        # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
         self.optimizer.step()
 
-        # Update target network
-        self.update_counter += 1
-        if self.update_counter % self.hard_update == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+    def update_target_network(self):
+        """Updates the target network by copying weights from the policy network."""
+        self.target_net.load_state_dict(self.policy_net.state_dict())
 
-        return loss.item()
+    def save_model(self):
+        """Saves the policy network to a file."""
+        torch.save(self.policy_net.state_dict(), self.save_path)
+        print(f"Model saved to {self.save_path}")
 
-    def train(self, env, num_episodes):
-        os.makedirs("model", exist_ok=True)
-        os.makedirs("training_results", exist_ok=True)
-
-        start_episode = 1
-        if os.path.isfile(TRAINING_RESULTS_PATH):
-            with open(TRAINING_RESULTS_PATH, mode="r") as file:
-                last_line = None
-                for last_line in file:
-                    pass
-                if last_line and not last_line.startswith("Episode"):
-                    start_episode = int(last_line.split(",")[0]) + 1
-
-        with open(TRAINING_RESULTS_PATH, mode="a", newline="") as file:
-            writer = csv.writer(file)
-            if start_episode == 1:
-                writer.writerow(["Episode", "Reward", "Average Loss", "Completed"])
-
-            for episode in range(num_episodes):
-                state = env.reset()
-                done = False
-                episode_reward = 0
-                losses = []
-                completed = False
-
-                while not done:
-                    action = self.select_action(state)
-                    next_state, reward, done, info = env.step(action)
-                    episode_reward += reward
-                    self.store_transition(state, action, reward, next_state, done)
-
-                    # Update and collect loss for this step
-                    loss = self.update()
-                    losses.append(loss)
-
-                    # Check if the environment was completed
-                    if done and "flag_get" in info:
-                        completed = bool(info["flag_get"])
-
-                    state = next_state
-
-                avg_loss = np.mean(losses) if losses else 0
-                print(f"Episode {start_episode + episode}/{num_episodes}, Reward: {episode_reward}, Avg Loss: {avg_loss:.4f}, Completed: {completed}")
-                writer.writerow([start_episode + episode, episode_reward, avg_loss, completed])
-
-                # Decay epsilon
-                self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
-                print(f"Epsilon after decay: {self.epsilon}")
-
-                if (start_episode + episode) % 100 == 0:
-                    self.save_model(MODEL_PATH)
-
-    def save_model(self, path):
-        torch.save(self.policy_net.state_dict(), path)
-        print(f"Model saved to {path}")
-
-    def load_model(self, path):
-        self.policy_net.load_state_dict(torch.load(path, map_location=self.device))
+    def load_model(self, path: str):
+        """Loads the policy network from a file."""
+        self.policy_net.load_state_dict(torch.load(path))
         self.target_net.load_state_dict(self.policy_net.state_dict())
         print(f"Model loaded from {path}")
 
-    def populate_replay_buffer(self, env, initial_size):
-        state = env.reset()
-        for _ in range(initial_size):
-            action = random.randint(0, self.action_dim - 1)
-            next_state, reward, done, _ = env.step(action)
-            self.store_transition(state, action, reward, next_state, done)
-            state = env.reset() if done else next_state
 
+# Training loop
 def main():
+    num_episodes = 10000
+    save_every = 100  # Save the model every 100 episodes
     env = create_env()
-    in_dim = env.observation_space.shape
-    num_actions = env.action_space.n
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    action_size = env.action_space.n
+    state_shape = env.observation_space.shape  # Should be (channels, height, width)
 
-    agent = DDQNAgent(state_dim=in_dim, action_dim=num_actions)
+    agent = DQNAgent(state_shape, action_size, device)
 
-    if os.path.exists(MODEL_PATH):
-        agent.load_model(MODEL_PATH)
-    else:
-        print("No pre-trained model found")
+    for episode in range(1, num_episodes + 1):
+        state = env.reset()
+        total_reward = 0
+        done = False
+        while not done:
+            action = agent.select_action(state)
+            next_state, reward, done, info = env.step(action)
+            total_reward += reward
 
-    agent.populate_replay_buffer(env, initial_size=10000)
-    num_episodes = 50000
-    agent.train(env, num_episodes)
-    agent.save_model(MODEL_PATH)
+            # Convert states to tensors
+            state_tensor = torch.tensor(state, dtype=torch.float32)
+            next_state_tensor = torch.tensor(next_state, dtype=torch.float32)
+
+            agent.memory.push(state_tensor, action, reward, next_state_tensor, done)
+            state = next_state
+            agent.optimize_model()
+
+            if agent.steps_done % agent.target_update_frequency == 0:
+                agent.update_target_network()
+
+        # Save the model at specified intervals
+        if episode % save_every == 0:
+            agent.save_model()
+
+        print(f"Episode {episode}, Total Reward: {total_reward}")
+
+    env.close()
+
 
 if __name__ == "__main__":
     main()
