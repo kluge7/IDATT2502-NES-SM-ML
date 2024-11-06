@@ -7,13 +7,13 @@ import gym
 import numpy as np
 
 
-class ActionRepeat(gym.Wrapper):
+class FrameSkipper(gym.Wrapper):
     """Repeats the action for a specified number of frames (default = 4)."""
 
-    def __init__(self, env, repeat=4):
+    def __init__(self, env, skip=4):
         super().__init__(env)
         self.buffer = collections.deque(maxlen=2)
-        self.repeat = repeat
+        self.repeat = skip
 
     def step(self, action):
         total_reward = 0.0
@@ -110,9 +110,6 @@ class NormalizePixels(gym.ObservationWrapper):
 # rm ffmpeg.zip
 
 
-import numpy as np
-
-
 class Monitor:
     def __init__(self, width, height, saved_path="output"):
         """Initializes ffmpeg video recording for the environment."""
@@ -180,9 +177,17 @@ class Monitor:
 class CustomReward(gym.RewardWrapper):
     """A custom reward wrapper that modifies rewards based on game score and level completion."""
 
-    def __init__(self, env=None, monitor=None):
+    def __init__(self, env=None, monitor=None, stuck_threshold=800, stuck_penalty=-5):
         super().__init__(env)
         self.monitor = monitor
+        self.stuck_threshold = stuck_threshold
+        self.stuck_penalty = stuck_penalty
+        self.prev_x_pos = 0
+        self.max_x_pos = 0
+        self.stuck_counter = 0
+        self.total_reward = 0
+        self.steps_since_death = 0
+        self.flag_count = 0
         self.curr_score = 0
 
     def step(self, action):
@@ -193,22 +198,47 @@ class CustomReward(gym.RewardWrapper):
         if self.monitor:
             self.monitor.record(state)
 
-        # Update the reward based on score differences
-        score_diff = info.get("score", 0) - self.curr_score
-        reward += score_diff / 40.0
-        self.curr_score = info.get("score", 0)
+        # TODO evaluate usage of altering reward structure
+        # # Update the reward based on score differences
+        # score_diff = info.get("score", 0) - self.curr_score
+        # reward += score_diff / 40.0
+        # self.curr_score = info.get("score", 0)
 
         # Additional rewards/penalties for completion or failure
-        if done:
-            if info.get("flag_get", False):
-                reward += 50  # Reward for completing the level
-            else:
-                reward -= 50  # Penalty for failing the level
+        # self.steps_since_death += 1
+        #
+        # # Check if the flag is captured
+        # if info.get("flag_get", False):
+        #     reward += 100  # Large reward for capturing the flag
+        #     self.flag_count += 1  # Increment flag counter
+        #
+        # if done and not info.get("flag_get", False):
+        #     reward -= 100  # Penalty for dying
+        #
+        # current_x_pos = info.get("x_pos", 0)
+        #
+        # if current_x_pos > self.prev_x_pos:
+        #     incremental_reward = (current_x_pos - self.prev_x_pos) / 10.0
+        #     reward += incremental_reward
+        #     self.prev_x_pos = current_x_pos
+        #
+        # if current_x_pos <= self.max_x_pos:
+        #     self.stuck_counter += 1
+        # else:
+        #     self.stuck_counter = 0
+        #
+        #
+        # self.max_x_pos = max(self.max_x_pos, current_x_pos)
+        # self.total_reward += reward
 
         # Normalize reward
         return state, reward, done, info
 
-    def reset(self, **kwargs):
-        # Reset the score tracker
-        self.curr_score = 0
-        return self.env.reset(**kwargs)
+    def reset(self):
+        self.prev_x_pos = 0
+        self.max_x_pos = 0
+        self.stuck_counter = 0
+        self.total_reward = 0
+        self.steps_since_death = 0
+        self.flag_count = 0
+        return self.env.reset()

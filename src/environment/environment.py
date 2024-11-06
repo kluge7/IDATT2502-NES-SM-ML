@@ -3,9 +3,9 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from nes_py.wrappers import JoypadSpace
 
 from src.environment.wrappers import (
-    ActionRepeat,
     ConvertToTensor,
     CustomReward,
+    FrameSkipper,
     Monitor,
     NormalizePixels,
     ObservationBuffer,
@@ -13,7 +13,7 @@ from src.environment.wrappers import (
 )
 
 
-def create_env(map="SuperMarioBros-v0", action_repeat=4, output_path=None):
+def create_env(map="SuperMarioBros-v0", skip=4, output_path=None):
     """Sets up the Super Mario Bros environment with customized wrappers."""
     env = JoypadSpace(gym_super_mario_bros.make(map), SIMPLE_MOVEMENT)
     if output_path is not None:
@@ -21,7 +21,7 @@ def create_env(map="SuperMarioBros-v0", action_repeat=4, output_path=None):
     else:
         monitor = None
     env = CustomReward(env, monitor=monitor)
-    env = ActionRepeat(env, action_repeat)
+    env = FrameSkipper(env, skip=skip)
     env = ResizeAndGrayscale(env)
     env = ConvertToTensor(env)
     env = ObservationBuffer(env, 4)
