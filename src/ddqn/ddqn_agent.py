@@ -3,14 +3,12 @@ import hashlib
 import os
 import random
 from collections import deque
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-
 from src.environment.environment import create_env
-from src.ddqn.dqn_model import DQN
+from src.ddqn.dqn_model import DuelingDQN  # Assuming you're using the DuelingDQN model now
 
 MODEL_PATH = "model/ddqn_model.pth"
 TRAINING_RESULTS_PATH = "training_results/training_results.csv"
@@ -25,27 +23,32 @@ class DDQNAgent:
             state_dim,
             action_dim,
             replay_buffer_size=10000,
-            batch_size=256,  # Updated batch size
+            batch_size=256,
             gamma=0.99,
             lr=1E-5,
-            hard_update=50,  # Updated for more frequent target updates
-            epsilon=0.001,  # Fixed exploration rate
+            hard_update=50,
+            epsilon_start=1.0,   # Start with full exploration
+            epsilon_min=0.01,    # Minimum exploration rate
+            epsilon_decay=0.995, # Decay factor for exploration
             update_counter=0
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
-        self.epsilon = epsilon
+        self.epsilon = epsilon_start
+        self.epsilon_start = epsilon_start
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
         self.hard_update = hard_update
         self.update_counter = update_counter
 
         # Set device
-        self.device = torch.device("cuda")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize main and target networks
-        self.policy_net = DQN(state_dim, action_dim).to(self.device)
-        self.target_net = DQN(state_dim, action_dim).to(self.device)
+        self.policy_net = DuelingDQN(state_dim, action_dim).to(self.device)
+        self.target_net = DuelingDQN(state_dim, action_dim).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -56,9 +59,9 @@ class DDQNAgent:
         self.replay_buffer = deque(maxlen=replay_buffer_size)
 
     def select_action(self, state):
-        if random.random() < self.epsilon:
+        if random.random() < self.epsilon:  # Exploration
             action = random.randint(0, self.action_dim - 1)
-        else:
+        else:  # Exploitation
             with torch.no_grad():
                 state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
                 q_values = self.policy_net(state)
@@ -69,38 +72,31 @@ class DDQNAgent:
         self.replay_buffer.append((state, action, reward, next_state, done))
 
     def update(self):
-        # Ensure minimum samples in replay buffer before training
         if len(self.replay_buffer) < max(2000, self.batch_size):  # Minimum replay buffer threshold
             return 0
 
-        # Sample a batch from the replay buffer
         batch = random.sample(self.replay_buffer, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        # Convert to tensors
         states = torch.tensor(np.array([arrange(s) for s in states]), dtype=torch.float32).to(self.device)
         actions = torch.tensor(actions, dtype=torch.long).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
         next_states = torch.tensor(np.array([arrange(ns) for ns in next_states]), dtype=torch.float32).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
-        # Compute Q(s, a) with policy network
         q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        # Compute target Q-values using Double Q-learning
         with torch.no_grad():
             next_actions = self.policy_net(next_states).argmax(dim=1)
             next_q_values = self.target_net(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
             target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
 
-        # Compute smooth L1 loss
         loss = F.smooth_l1_loss(q_values, target_q_values)
         self.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
-        # Update target network
         self.update_counter += 1
         if self.update_counter % self.hard_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -138,11 +134,9 @@ class DDQNAgent:
                     episode_reward += reward
                     self.store_transition(state, action, reward, next_state, done)
 
-                    # Update and collect loss for this step
                     loss = self.update()
                     losses.append(loss)
 
-                    # Check if the environment was completed
                     if done and "flag_get" in info:
                         completed = bool(info["flag_get"])
 
@@ -151,6 +145,12 @@ class DDQNAgent:
                 avg_loss = np.mean(losses) if losses else 0
                 print(f"Episode {start_episode + episode}/{num_episodes}, Reward: {episode_reward}, Avg Loss: {avg_loss:.4f}, Completed: {completed}")
                 writer.writerow([start_episode + episode, episode_reward, avg_loss, completed])
+
+                # Decay epsilon
+                if self.epsilon > self.epsilon_min:
+                    self.epsilon *= self.epsilon_decay
+                    self.epsilon = max(self.epsilon, self.epsilon_min)
+                    print(f"Epsilon after decay: {self.epsilon}")
 
                 if (start_episode + episode) % 100 == 0:
                     self.save_model(MODEL_PATH)
