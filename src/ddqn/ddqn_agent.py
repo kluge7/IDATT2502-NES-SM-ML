@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from src.environment.environment import create_env
-from src.ddqn.dqn_model import DuelingDQN  # Assuming you're using the DuelingDQN model now
+from src.ddqn.dqn_model import DQN  # Assuming you're using the DuelingDQN model now
 
 MODEL_PATH = "model/ddqn_model.pth"
 TRAINING_RESULTS_PATH = "training_results/training_results.csv"
@@ -47,8 +47,8 @@ class DDQNAgent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize main and target networks
-        self.policy_net = DuelingDQN(state_dim, action_dim).to(self.device)
-        self.target_net = DuelingDQN(state_dim, action_dim).to(self.device)
+        self.policy_net = DQN(state_dim, action_dim).to(self.device)
+        self.target_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -111,9 +111,10 @@ class DDQNAgent:
         if os.path.isfile(TRAINING_RESULTS_PATH):
             with open(TRAINING_RESULTS_PATH, mode="r") as file:
                 last_line = None
-                for last_line in file:
-                    pass
-                if last_line is not None and last_line.strip():
+                for line in file:
+                    last_line = line
+                # Skip the header line by checking if last_line contains the word "Episode"
+                if last_line is not None and "Episode" not in last_line:
                     start_episode = int(last_line.split(",")[0]) + 1
 
         with open(TRAINING_RESULTS_PATH, mode="a", newline="") as file:
