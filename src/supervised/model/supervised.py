@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.supervised.utils.dataset_utils import load_dataset
+from src.supervised.utils.dataset_utils import load_dataset, preprocess_frame
 
 action_map = {
     0: 0,  # NOOP
@@ -17,6 +17,24 @@ action_map = {
     152: 9,  # left + A + B
     2: 10,  # down
 }
+
+
+def decode_action(action_int):
+    actions = {
+        128: "A",
+        64: "up",
+        32: "left",
+        16: "B",
+        8: "start",
+        4: "right",
+        2: "down",
+        1: "select",
+    }
+    active_actions = []
+    for bit_value, action_name in actions.items():
+        if action_int & bit_value:
+            active_actions.append(action_name)
+    return active_actions
 
 
 class MarioCNN(nn.Module):
@@ -75,7 +93,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Training loop
-for epoch in range(10):
+for epoch in range(3):
     running_loss = 0.0
     for images, actions in dataloader:
         optimizer.zero_grad()
@@ -90,32 +108,16 @@ for epoch in range(10):
 torch.save(model.state_dict(), "mario_cnn_model_final.pth")
 
 import gym
-from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from nes_py.wrappers import JoypadSpace
-from PIL import Image
-from torchvision import transforms
 
 # Initialize the Super Mario environment
 env = gym.make("SuperMarioBros-v0")
-env = JoypadSpace(env, COMPLEX_MOVEMENT)
+env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-
+model = MarioCNN(num_classes)
+# model.load_state_dict(torch.load("mario_cnn_model_final.pth", weights_only=True))
 model.eval()
-
-
-def preprocess_frame(frame):
-    frame = Image.fromarray(frame)
-    transform = transforms.Compose(
-        [
-            transforms.Grayscale(num_output_channels=1),
-            transforms.Resize((240, 256)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5]),
-        ]
-    )
-    frame = transform(frame)
-    frame = frame.unsqueeze(0)
-    return frame
 
 
 state = env.reset()
@@ -130,7 +132,10 @@ while not done:
         action_prob = model(state_preprocessed)
         predicted_action = torch.argmax(action_prob).item()
 
-    action = action_map.get(predicted_action, 0)
+    decoded_actions = decode_action(predicted_action)
+    print(f"Predicted action {predicted_action} corresponds to: {decoded_actions}")
+
+    action = action_map.get(predicted_action)
 
     state, reward, done, info = env.step(action)
 

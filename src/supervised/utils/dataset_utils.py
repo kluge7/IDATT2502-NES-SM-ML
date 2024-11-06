@@ -1,5 +1,6 @@
 import os
 import re
+from os import listdir
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,9 +11,22 @@ from torchvision import transforms
 
 py_file = os.path.abspath(__file__)  # path to main.py
 py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
-data_folder = os.path.join(
-    py_dir, "data-smb/data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
-)  # path to info.txt
+data_folder = os.path.join(py_dir, "data-smb/data-smb-1-1")  # path to info.txt
+
+
+def get_paths():
+    path_list = []
+    for subfolder in listdir(data_folder):
+        for sub in listdir(os.path.join(data_folder, subfolder)):
+            path_list.append(os.path.join(data_folder, subfolder, sub))
+
+    return path_list
+
+
+paths = get_paths()
+for path in paths:
+    print(path)
+
 
 action_map = {
     7: "A",
@@ -39,9 +53,12 @@ def display_image(image_tensor: torch.Tensor) -> None:
 
 
 def parse_filename_to_action(filename: str) -> int:
-    components = re.split(r"[_-]", filename)
-    action = components[6].replace("a", "")
-    return int(action)
+    match = re.search(r"_a(\d+)", filename)
+    if match:
+        action = int(match.group(1))
+        return action
+    else:
+        raise ValueError("Action not found in the filename")
 
 
 def get_actions(input_integer: int) -> list:
@@ -68,9 +85,7 @@ def get_action_from_bit(actions: list) -> list:
     return action_keys
 
 
-def load_dataset(
-    data_dir=data_folder,
-) -> tuple[torch.Tensor, list]:
+def load_dataset() -> tuple[torch.Tensor, list]:
     images = []
     labels = []
 
@@ -85,9 +100,9 @@ def load_dataset(
         ]
     )
 
-    for filename in os.listdir(data_dir):
+    for filename in paths:
         if filename.endswith(".png"):
-            img_path = os.path.join(data_dir, filename)
+            img_path = filename
             img = Image.open(img_path)
             img_tensor = transform(img)
             images.append(img_tensor)
@@ -108,6 +123,21 @@ def get_actions_list():
     return actions
 
 
+def preprocess_frame(frame):
+    frame = Image.fromarray(frame)
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((240, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
+    frame = transform(frame)
+    frame = frame.unsqueeze(0)
+    return frame
+
+
 # Generate all possible combinations
 def generate_action_combinations(action_map):
     n = len(action_map)
@@ -124,26 +154,6 @@ def generate_action_combinations(action_map):
         all_combinations.append(combination)
 
     return all_combinations
-
-
-# Call the function
-combinations = generate_action_combinations(action_map)
-for combo in combinations:
-    print(combo)
-
-import pandas as pd
-
-# Create DataFrame
-df_combinations = pd.DataFrame(columns=action_map.values())
-
-# Fill DataFrame
-rows = []
-for combo in combinations:
-    row = {action: (1 if action in combo else 0) for action in action_map.values()}
-    rows.append(row)
-    df_combinations = pd.concat(
-        [df_combinations, pd.DataFrame(rows)], ignore_index=True
-    )
 
 
 def train_test_spit(
