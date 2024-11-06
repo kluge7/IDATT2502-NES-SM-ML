@@ -15,28 +15,28 @@ from src.ddqn.dqn_model import DQN
 MODEL_PATH = "model/ddqn_model.pth"
 TRAINING_RESULTS_PATH = "training_results/training_results.csv"
 
+# Function to arrange the state for consistent input format
+def arrange(state):
+    return np.expand_dims(np.transpose(state, (2, 0, 1)), 0)
+
 class DDQNAgent:
     def __init__(
             self,
             state_dim,
             action_dim,
             replay_buffer_size=10000,
-            batch_size=64,
+            batch_size=256,  # Updated batch size
             gamma=0.99,
             lr=1E-5,
-            hard_update=2000,
-            epsilon_start=1.0,
-            epsilon_min=0.01,
-            epsilon_decay=0.999,
+            hard_update=50,  # Updated for more frequent target updates
+            epsilon=0.001,  # Fixed exploration rate
             update_counter=0
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.batch_size = batch_size
         self.gamma = gamma
-        self.epsilon = epsilon_start
-        self.epsilon_min = epsilon_min
-        self.epsilon_decay = epsilon_decay
+        self.epsilon = epsilon
         self.hard_update = hard_update
         self.update_counter = update_counter
 
@@ -46,10 +46,6 @@ class DDQNAgent:
         # Initialize main and target networks
         self.policy_net = DQN(state_dim, action_dim).to(self.device)
         self.target_net = DQN(state_dim, action_dim).to(self.device)
-        if next(self.policy_net.parameters()).is_cuda:
-            print("Using CUDA for model training.")
-        else:
-            print("Not using CUDA; training on CPU.")
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -61,50 +57,50 @@ class DDQNAgent:
 
     def select_action(self, state):
         if random.random() < self.epsilon:
-            weights = [0.05, 0.2, 0.25, 0.2, 0.2, 0.1, 0.05]
-            action = random.choices(range(self.action_dim), weights=weights)[0]
-            return action
+            action = random.randint(0, self.action_dim - 1)
         else:
             with torch.no_grad():
                 state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
                 q_values = self.policy_net(state)
-                return q_values.argmax().item()
+                action = q_values.argmax().item()
+        return action
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.append((state, action, reward, next_state, done))
 
     def update(self):
-        if len(self.replay_buffer) < self.batch_size:
-            return 0  # Return zero loss if there's not enough data
+        # Ensure minimum samples in replay buffer before training
+        if len(self.replay_buffer) < max(2000, self.batch_size):  # Minimum replay buffer threshold
+            return 0
 
         # Sample a batch from the replay buffer
         batch = random.sample(self.replay_buffer, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
         # Convert to tensors
-        states = torch.tensor(np.array(states), dtype=torch.float32).to(self.device)
+        states = torch.tensor(np.array([arrange(s) for s in states]), dtype=torch.float32).to(self.device)
         actions = torch.tensor(actions, dtype=torch.long).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(np.array([arrange(ns) for ns in next_states]), dtype=torch.float32).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         # Compute Q(s, a) with policy network
         q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        # Compute target Q-values using DDQN
+        # Compute target Q-values using Double Q-learning
         with torch.no_grad():
             next_actions = self.policy_net(next_states).argmax(dim=1)
             next_q_values = self.target_net(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
             target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
 
-        # Compute loss and optimize the policy network
-        loss = F.mse_loss(q_values, target_q_values)
+        # Compute smooth L1 loss
+        loss = F.smooth_l1_loss(q_values, target_q_values)
         self.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
-        # Perform hard update on target network
+        # Update target network
         self.update_counter += 1
         if self.update_counter % self.hard_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -147,26 +143,15 @@ class DDQNAgent:
                     losses.append(loss)
 
                     # Check if the environment was completed
-                    if done and "flag_get" in info:  # Assuming completion indicated by "flag_get"
+                    if done and "flag_get" in info:
                         completed = bool(info["flag_get"])
 
                     state = next_state
 
-                # Decay epsilon
-                if self.epsilon > self.epsilon_min:
-                    self.epsilon *= self.epsilon_decay
-                    self.epsilon = max(self.epsilon, self.epsilon_min)
-                    print(f"Epsilon after decay: {self.epsilon}")
-
-                # Calculate average loss for the episode
                 avg_loss = np.mean(losses) if losses else 0
-
                 print(f"Episode {start_episode + episode}/{num_episodes}, Reward: {episode_reward}, Avg Loss: {avg_loss:.4f}, Completed: {completed}")
-
-                # Log episode data to file
                 writer.writerow([start_episode + episode, episode_reward, avg_loss, completed])
 
-                # Save model every 100 episodes
                 if (start_episode + episode) % 100 == 0:
                     self.save_model(MODEL_PATH)
 
@@ -189,13 +174,9 @@ class DDQNAgent:
             action = random.randint(0, self.action_dim - 1)
             next_state, reward, done, _ = env.step(action)
             self.store_transition(state, action, reward, next_state, done)
-            if done:
-                state = env.reset()
-            else:
-                state = next_state
+            state = env.reset() if done else next_state
 
 def get_model_checksum(model):
-    """Returns a checksum of the model's parameters."""
     md5 = hashlib.md5()
     for param in model.parameters():
         md5.update(param.detach().cpu().numpy().tobytes())
@@ -205,7 +186,6 @@ def main():
     env = create_env()
     in_dim = env.observation_space.shape
     num_actions = env.action_space.n
-
     agent = DDQNAgent(state_dim=in_dim, action_dim=num_actions)
 
     if os.path.exists(MODEL_PATH):
