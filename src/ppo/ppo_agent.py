@@ -1,482 +1,375 @@
 import csv
+import gc
 import os
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-import torch.optim as optim
+from cnn_network import CNNNetwork
+from ppo_hyperparameters import PPOHyperparameters
+from torch import nn, optim
 from torch.distributions import Categorical
 
 from src.environment.environment import create_env
-from src.ppo.cnn_network import CNNNetwork
 from src.utils import get_unique_filename
-
-ACTOR_PATH = "old_model/actor.pth"
-CRITIC_PATH = "old_model/critic.pth"
 
 
 class PPOAgent:
-    """Proximal Policy Optimization (PPO) Agent with Advantage Estimation and Actor-Critic Networks.
-
-    This agent implements the PPO algorithm with an actor-critic framework.
-    The actor is responsible for action selection based on policy probabilities,
-    and the critic estimates the state value for advantage calculation.
-
-    Attributes:
-        actor (torch.nn.Module): Neural network representing the policy.
-        critic (torch.nn.Module): Neural network representing the value function.
-        actor_optimizer (torch.optim.Optimizer): Optimizer for the actor network.
-        critic_optimizer (torch.optim.Optimizer): Optimizer for the critic network.
-        device (torch.device): Specifies whether to use CPU or GPU for training.
-
-    Hyperparameters:
-        gamma (float): Discount factor for future rewards.
-        epsilon (float): Clipping parameter for PPO, controlling the policy update constraint.
-        lam (float): Lambda parameter for Generalized Advantage Estimation (GAE).
-        entropy_coef (float): Coefficient for entropy regularization to encourage exploration.
-        grad_clip (float): Maximum gradient norm for gradient clipping.
-
-    """
-
-    def __init__(
-        self,
-        in_dim,
-        num_actions,
-        actor_lr=3e-4,
-        critic_lr=1e-3,
-        gamma=0.99,
-        epsilon=0.1,
-        lam=0.95,
-        entropy_coef=0.01,
-        grad_clip=0.5,
-    ):
-        """Initializes PPOAgent with actor and critic networks, hyperparameters, and optimizers.
-
-        Args:
-            in_dim (tuple): Input dimensions for the CNN, representing the state space.
-            num_actions (int): Number of actions in the action space.
-            actor_lr (float): Learning rate for the actor optimizer.
-            critic_lr (float): Learning rate for the critic optimizer.
-            gamma (float): Discount factor for future rewards.
-            epsilon (float): Clipping parameter for PPO to constrain policy updates.
-            lam (float): Lambda parameter for GAE (Generalized Advantage Estimation).
-            entropy_coef (float): Coefficient for entropy regularization.
-            grad_clip (float): Maximum norm for gradient clipping.
-
-        """
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.lam = lam
-        self.entropy_coef = entropy_coef
-        self.grad_clip = grad_clip
+    def __init__(self, env, options: PPOHyperparameters):
+        self.env = env
+        self.options = options
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Actor and Critic networks
-        self.actor = CNNNetwork(in_dim, num_actions).to(self.device)
-        self.critic = CNNNetwork(in_dim, 1).to(self.device)
+        self.obs_dimension = env.observation_space.shape
+        self.action_dimension = env.action_space.n
 
-        # Optimizers for Actor and Critic
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_lr)
+        self.actor = CNNNetwork(self.obs_dimension, self.action_dimension).to(
+            self.device
+        )
+        self.critic = CNNNetwork(self.obs_dimension, 1).to(self.device)
 
-    def select_action(self, state):
-        """Selects an action based on the current policy.
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=options.lr)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=options.lr)
 
-        Args:
-            state (torch.Tensor): The current state of the environment.
+    def select_action(self, observation):
+        observation = torch.tensor(observation, dtype=torch.float).to(self.device)
+        action_logits = self.actor(observation.unsqueeze(0).to(self.device))
+        action_probabilities = F.softmax(action_logits, dim=-1)[0]
+        action_distribution = Categorical(action_probabilities)
 
-        Returns:
-            action (int): The chosen action.
-            log_prob (torch.Tensor): Log probability of the chosen action.
-            value (torch.Tensor): Estimated value of the current state.
+        # Sample an action and get the log probability
+        selected_action = action_distribution.sample()
+        log_probability = action_distribution.log_prob(selected_action)
+        return selected_action.item(), log_probability.detach().to(self.device)
 
-        """
-        state = state.to(self.device)
-        with torch.no_grad():
-            logits = self.actor(state)
-            value = self.critic(state).squeeze(-1)
-            probs = F.softmax(logits, dim=-1)
-            dist = Categorical(probs)
-            action = dist.sample()
-            log_prob = dist.log_prob(action)
-        return action.item(), log_prob, value
+    def calculate_gae(self, episode_rewards, episode_values, episode_dones):
+        batch_advantages = []
 
-    def compute_gae(self, rewards, values, next_value, dones):
-        """Calculates advantages and returns using Generalized Advantage Estimation (GAE).
+        for rewards, values, dones in zip(
+            episode_rewards, episode_values, episode_dones
+        ):
+            episode_advantages = []
+            last_advantage = 0
 
-        Args:
-            rewards (list): Collected rewards for each time step in the episode.
-            values (list): Estimated state values from the critic.
-            next_value (float): Estimated value of the final state.
-            dones (list): Boolean indicators for episode completion.
+            for step in reversed(range(len(rewards))):
+                if step + 1 < len(rewards):
+                    delta = (
+                        rewards[step]
+                        + self.options.gamma * values[step + 1] * (1 - dones[step])
+                        - values[step]
+                    )
+                else:
+                    delta = rewards[step] - values[step]
 
-        Returns:
-            advantages (torch.Tensor): Computed advantage estimates.
-            returns (torch.Tensor): Target returns for each state.
+                # Calculate the GAE advantage
+                advantage = (
+                    delta
+                    + self.options.gamma
+                    * self.options.lam
+                    * (1 - dones[step])
+                    * last_advantage
+                )
 
-        """
-        values = values + [next_value]
-        gae = 0
-        advantages = []
-        returns = []
+                last_advantage = advantage
+                episode_advantages.insert(0, advantage)
 
-        for step in reversed(range(len(rewards))):
-            delta = (
-                rewards[step]
-                + self.gamma * values[step + 1] * (1 - dones[step])
-                - values[step]
-            )
-            gae = delta + self.gamma * self.lam * (1 - dones[step]) * gae
-            advantages.insert(0, gae)
-            returns.insert(0, gae + values[step])
+            batch_advantages.extend(episode_advantages)
 
-        # Convert lists to tensors after calculating advantages and returns
-        advantages = torch.tensor(advantages, device=self.device)
-        returns = torch.tensor(returns, device=self.device)
+        return torch.tensor(batch_advantages, dtype=torch.float32).to(self.device)
 
-        # Normalize advantages
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        return advantages, returns
+    def evaluate(self, batch_observations, batch_actions):
+        v = self.critic(batch_observations).squeeze()
+
+        batch_observations = torch.tensor(batch_observations, dtype=torch.float).to(
+            self.device
+        )
+        action_logits = self.actor(batch_observations)
+        action_probabilities = F.softmax(action_logits, dim=-1).to(self.device)
+        action_distribution = Categorical(action_probabilities)
+        log_action_probabilities = action_distribution.log_prob(batch_actions).to(
+            self.device
+        )
+
+        return v, log_action_probabilities, action_distribution.entropy()
+
+    def rollout(self, episode_output_file):
+        gc.collect()
+
+        batch_observations = []
+        batch_actions = []
+        batch_log_probabilities = []
+        batch_rewards = []
+        batch_lengths = []
+        batch_values = []
+        batch_dones = []
+        batch_flags = 0
+
+        timestep = 0
+
+        while timestep < self.options.timesteps_per_batch:
+            episode_rewards = []
+            episode_values = []
+            episode_dones = []
+
+            observations = self.env.reset()
+            done = False
+            flag = False
+
+            for _episode_step in range(self.options.max_timesteps_per_episode):
+                if self.options.render:
+                    self.env.render()
+
+                timestep += 1
+                episode_dones.append(done)
+                batch_observations.append(observations)
+
+                action, log_probabilities = self.select_action(observations)
+                v = self.critic(
+                    torch.tensor(observations, dtype=torch.float)
+                    .unsqueeze(0)
+                    .to(self.device)
+                )
+                observations, reward, done, info = self.env.step(action)
+
+                if info.get("flag_get"):
+                    flag = True
+
+                episode_rewards.append(reward)
+                episode_values.append(v.flatten())
+                batch_actions.append(action)
+                batch_log_probabilities.append(log_probabilities)
+
+                if done:
+                    break
+
+            batch_lengths.append(_episode_step + 1)
+            batch_rewards.append(episode_rewards)
+            batch_values.append(episode_values)
+            batch_dones.append(episode_dones)
+
+            with open(
+                os.path.join(self.options.episode_result_path, episode_output_file),
+                mode="a",
+                newline="",
+            ) as file:
+                writer = csv.writer(file)
+                writer.writerow([np.sum(episode_rewards), 1 if flag else 0])
+
+            if flag:
+                batch_flags += 1
+
+        batch_observations = torch.tensor(
+            np.array(batch_observations), dtype=torch.float32
+        ).to(self.device)
+        batch_actions = torch.tensor(batch_actions, dtype=torch.long).to(self.device)
+        batch_log_probabilities = torch.tensor(
+            batch_log_probabilities, dtype=torch.float32
+        ).to(self.device)
+
+        return (
+            batch_observations,
+            batch_actions,
+            batch_log_probabilities,
+            batch_rewards,
+            batch_lengths,
+            batch_values,
+            batch_dones,
+            batch_flags,
+        )
 
     def update(
-        self, states, actions, old_log_probs, returns, advantages, mini_batch_size=64
+        self,
+        batch_observations,
+        batch_actions,
+        batch_log_probabilities,
+        batch_rtgs,
+        advantages,
+        timestep,
+        max_timesteps,
     ):
-        """Updates the actor and critic networks using PPO with mini-batch training.
+        step = batch_observations.size(0)
+        indices = np.arange(step)
+        minibatch_size = step // self.options.num_minibatches
+        loss = []
 
-        Args:
-            states (torch.Tensor): Batch of observed states.
-            actions (torch.Tensor): Batch of actions taken.
-            old_log_probs (torch.Tensor): Log probabilities of the actions taken, from the old policy.
-            returns (torch.Tensor): Target returns for each state-action pair.
-            advantages (torch.Tensor): Computed advantage estimates for each state-action pair.
-            mini_batch_size (int): Size of mini-batches for each update epoch.
+        for _ in range(self.options.n_updates_per_iteration):
+            if self.options.dynamic_lr:
+                frac = (timestep - 1.0) / max_timesteps
+                new_lr = self.options.lr * (1.0 - frac)
+                new_lr = max(new_lr, self.options.min_lr_limit)
+                self.actor_optimizer.param_groups[0]["lr"] = new_lr
+                self.critic_optimizer.param_groups[0]["lr"] = new_lr
 
-        """
-        for _ in range(4):  # Multiple epochs
-            indices = torch.randperm(states.size(0))
-            for i in range(0, states.size(0), mini_batch_size):
-                batch_indices = indices[i : i + mini_batch_size]
-                batch_states = states[batch_indices]
-                batch_actions = actions[batch_indices]
-                batch_old_log_probs = old_log_probs[batch_indices]
-                batch_returns = returns[batch_indices]
-                batch_advantages = advantages[batch_indices]
+            np.random.shuffle(indices)
 
-                # Actor update
-                logits = self.actor(batch_states)
-                probs = F.softmax(logits, dim=-1) + 1e-8  # Adding epsilon to avoid NaNs
-                dist = Categorical(probs)
-                log_probs = dist.log_prob(batch_actions)
-                entropy = dist.entropy().mean()
+            for start in range(0, step, minibatch_size):
+                end = start + minibatch_size
+                idx = indices[start:end]
 
-                ratios = torch.exp(log_probs - batch_old_log_probs)
-                surr1 = ratios * batch_advantages
+                mini_observations = batch_observations[idx]
+                mini_actions = batch_actions[idx]
+                mini_log_probabilities = batch_log_probabilities[idx]
+                mini_advantages = advantages[idx]
+                mini_rtgs = batch_rtgs[idx]
+
+                v, current_log_probabilities, entropy = self.evaluate(
+                    mini_observations, mini_actions
+                )
+
+                ratios = torch.exp(current_log_probabilities - mini_log_probabilities)
+                kl = (
+                    (ratios - 1) ** (current_log_probabilities - mini_log_probabilities)
+                ).mean()
+
+                surr1 = ratios * mini_advantages
                 surr2 = (
-                    torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon)
-                    * batch_advantages
+                    torch.clamp(ratios, 1 - self.options.clip, 1 + self.options.clip)
+                    * mini_advantages
                 )
                 actor_loss = (
-                    -torch.min(surr1, surr2).mean() - self.entropy_coef * entropy
-                )
+                    -torch.min(surr1, surr2)
+                ).mean() - self.options.ent_coef * entropy.mean()
+                critic_loss = nn.MSELoss()(v, mini_rtgs)
 
                 self.actor_optimizer.zero_grad()
-                actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.grad_clip)
+                actor_loss.backward(retain_graph=True)
+                nn.utils.clip_grad_norm_(
+                    self.actor.parameters(), self.options.max_grad_norm
+                )
                 self.actor_optimizer.step()
-
-                # Critic update
-                values = self.critic(batch_states).squeeze(-1)
-                critic_loss = F.smooth_l1_loss(values, batch_returns)
 
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_clip)
+                nn.utils.clip_grad_norm_(
+                    self.critic.parameters(), self.options.max_grad_norm
+                )
                 self.critic_optimizer.step()
 
-    def save(self, path="model"):
-        """Saves the actor and critic networks to the specified directory.
+                loss.append(actor_loss.detach())
 
-        Args:
-            path (str): Directory to save the model weights.
+            if kl > self.options.target_kl:
+                break
 
-        """
-        os.makedirs(path, exist_ok=True)
-        torch.save(self.actor.state_dict(), os.path.join(path, "actor.pth"))
-        torch.save(self.critic.state_dict(), os.path.join(path, "critic.pth"))
+        return np.mean(loss)
 
     def train(
-        self, env, num_episodes, path="training_result", output=None, render=False
+        self, max_timesteps, model_actor="ppo_actor.pth", model_critic="ppo_critic.pth"
     ):
-        """Trains the agent in the specified environment using PPO.
+        os.makedirs(self.options.model_path, exist_ok=True)
+        os.makedirs(self.options.training_result_path, exist_ok=True)
+        os.makedirs(self.options.episode_result_path, exist_ok=True)
 
-        Args:
-            env (gym.Env): The environment for training.
-            num_episodes (int): Number of episodes to train the agent.
-            path (str): Directory to save training logs.
-            output (str): Filename for the output CSV file. If None, no CSV file is created.
-            render (bool): Whether to render the environment during training.
+        output_csv = self.options.specification + ".csv"
+        training_output_file = get_unique_filename(
+            self.options.training_result_path, output_csv
+        )
+        episode_output_file = get_unique_filename(
+            self.options.episode_result_path, output_csv
+        )
 
-        """
-        os.makedirs(path, exist_ok=True)
-        if output:
-            output_file = get_unique_filename(path, output)
-            with open(os.path.join(path, output_file), mode="w", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(["Episode", "Reward", "Got_Flag"])
-
-        for episode in range(num_episodes):
-            state = env.reset()
-            done = False
-            states, actions, log_probs, rewards, values, dones = [], [], [], [], [], []
-            episode_reward = 0
-            got_the_flag = False
-
-            while not done:
-                state_tensor = (
-                    torch.tensor(state, dtype=torch.float32)
-                    .unsqueeze(0)
-                    .to(self.device)
-                )
-                action, log_prob, value = self.select_action(state_tensor)
-                next_state, reward, done, info = env.step(action)
-                episode_reward += reward
-
-                states.append(state_tensor)
-                actions.append(torch.tensor(action, device=self.device))
-                log_probs.append(log_prob)
-                rewards.append(reward)
-                values.append(value)
-                dones.append(done)
-
-                state = next_state
-                if info.get("flag_get", False):
-                    got_the_flag = True
-
-                if render:
-                    env.render()
-
-            next_state_tensor = (
-                torch.tensor(next_state, dtype=torch.float32)
-                .unsqueeze(0)
-                .to(self.device)
+        with open(
+            os.path.join(self.options.training_result_path, training_output_file),
+            mode="w",
+            newline="",
+        ) as file:
+            writer = csv.writer(file)
+            writer.writerow(
+                [
+                    "Iteration",
+                    "BatchReward",
+                    "GotFlag",
+                    "AverageActorLoss",
+                    "PercentageCompleted",
+                ]
             )
-            with torch.no_grad():
-                next_value = self.critic(next_state_tensor).squeeze(-1)
 
-            advantages, returns = self.compute_gae(rewards, values, next_value, dones)
-            states = torch.cat(states)
-            actions = torch.stack(actions)
-            old_log_probs = torch.stack(log_probs)
-            returns = returns.detach()
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        with open(
+            os.path.join(self.options.episode_result_path, episode_output_file),
+            mode="w",
+            newline="",
+        ) as file:
+            writer = csv.writer(file)
+            writer.writerow(["Reward", "GotFlag"])
 
-            self.update(states, actions, old_log_probs, returns, advantages)
+        timestep, iteration = 0, 0
 
-            print(f"Episode {episode + 1}/{num_episodes}, Reward: {episode_reward}")
+        while timestep < max_timesteps:
+            (
+                batch_observations,
+                batch_actions,
+                batch_log_probabilities,
+                batch_rewards,
+                batch_lengths,
+                batch_values,
+                batch_dones,
+                batch_flags,
+            ) = self.rollout(episode_output_file)
 
-            if output:
-                with open(
-                    os.path.join(path, output_file), mode="a", newline=""
-                ) as file:
-                    writer = csv.writer(file)
-                    writer.writerow(
-                        [episode + 1, episode_reward, 1 if got_the_flag else 0]
-                    )
+            timestep += np.sum(batch_lengths)
+            iteration += 1
 
-            if episode % 100 == 0:
-                self.save("model")
+            advantages = self.calculate_gae(batch_rewards, batch_values, batch_dones)
+            v = self.critic(batch_observations).squeeze()
+            batch_rtgs = advantages + v.detach()
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
 
-    def train2(
-        self,
-        env,
-        num_episodes,
-        output_path="training_result",
-        output=None,
-        render=False,
-    ):
-        """Trains the PPO agent in a single environment using a specified number of episodes.
+            loss = self.update(
+                batch_observations,
+                batch_actions,
+                batch_log_probabilities,
+                batch_rtgs,
+                advantages,
+                timestep,
+                max_timesteps,
+            )
 
-        Args:
-            env (gym.Env): The environment for training.
-            num_episodes (int): Number of episodes to train the agent.
-            output_path (str): Path to save training results.
-            output (str): Filename for the output CSV file. If None, no CSV file is created.
-            render (bool): Whether to render the environment during training.
-
-        """
-        # Set up the training log directory and output file
-        os.makedirs(output_path, exist_ok=True)
-        if output:
-            output_file = get_unique_filename(output_path, output)
             with open(
-                os.path.join(output_path, output_file), mode="w", newline=""
+                os.path.join(self.options.training_result_path, training_output_file),
+                mode="a",
+                newline="",
             ) as file:
                 writer = csv.writer(file)
-                writer.writerow(["Episode", "Reward", "Got_Flag"])
-
-        for episode in range(num_episodes):
-            state = env.reset()
-            done = False
-            states, actions, log_probs, rewards, values, dones = [], [], [], [], [], []
-            episode_reward = 0
-            got_the_flag = False
-
-            # Collect experiences for each step in the episode
-            while not done:
-                state_tensor = (
-                    torch.tensor(state, dtype=torch.float32)
-                    .unsqueeze(0)
-                    .to(self.device)
+                writer.writerow(
+                    [
+                        iteration,
+                        np.sum(np.concatenate(batch_rewards)),
+                        batch_flags,
+                        loss,
+                        f"{timestep * 100 / max_timesteps:.2f}%",
+                    ]
                 )
-                action, log_prob, value = self.select_action(state_tensor)
-                next_state, reward, done, info = env.step(action)
-                episode_reward += reward
 
-                # Store the experience
-                states.append(state_tensor)
-                actions.append(torch.tensor(action, device=self.device))
-                log_probs.append(log_prob)
-                rewards.append(
-                    torch.tensor(reward, dtype=torch.float32, device=self.device)
-                )
-                values.append(value)
-                dones.append(done)
-
-                # Update state and check flag
-                state = next_state
-                if info.get("flag_get", False):
-                    got_the_flag = True
-
-                # Render the environment if specified
-                if render:
-                    env.render()
-
-            # Compute the next state's value after the episode ends
-            next_state_tensor = (
-                torch.tensor(next_state, dtype=torch.float32)
-                .unsqueeze(0)
-                .to(self.device)
-            )
-            with torch.no_grad():
-                next_value = self.critic(next_state_tensor).squeeze(-1)
-
-            # Compute Generalized Advantage Estimation (GAE)
-            values.append(next_value)
-            gae = 0
-            returns = []
-            advantages = []
-
-            for step in reversed(range(len(rewards))):
-                delta = (
-                    rewards[step]
-                    + self.gamma * values[step + 1] * (1 - dones[step])
-                    - values[step]
-                )
-                gae = delta + self.gamma * self.lam * (1 - dones[step]) * gae
-                advantages.insert(0, gae)
-                returns.insert(0, gae + values[step])
-
-            advantages = torch.tensor(advantages, device=self.device)
-            returns = torch.tensor(returns, device=self.device)
-
-            # Normalize advantages
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
-            # Prepare tensors for batch update
-            states = torch.cat(states)
-            actions = torch.stack(actions)
-            old_log_probs = torch.stack(log_probs).detach()
-
-            # PPO Update Step
-            for _ in range(4):  # Multiple epochs for each batch
-                # Shuffle for mini-batch sampling
-                indices = torch.randperm(states.size(0))
-                for start in range(
-                    0, states.size(0), 64
-                ):  # Using 64 as mini-batch size
-                    end = start + 64
-                    batch_indices = indices[start:end]
-
-                    # Sample batches
-                    batch_states = states[batch_indices]
-                    batch_actions = actions[batch_indices]
-                    batch_old_log_probs = old_log_probs[batch_indices]
-                    batch_returns = returns[batch_indices]
-                    batch_advantages = advantages[batch_indices]
-
-                    # Calculate actor (policy) loss
-                    logits = self.actor(batch_states)
-                    dist = Categorical(F.softmax(logits, dim=-1))
-                    log_probs = dist.log_prob(batch_actions)
-                    entropy = dist.entropy().mean()
-
-                    # Clipped surrogate objective
-                    ratios = torch.exp(log_probs - batch_old_log_probs)
-                    surr1 = ratios * batch_advantages
-                    surr2 = (
-                        torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon)
-                        * batch_advantages
-                    )
-                    actor_loss = (
-                        -torch.min(surr1, surr2).mean() - self.entropy_coef * entropy
-                    )
-
-                    # Update actor network
-                    self.actor_optimizer.zero_grad()
-                    actor_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(
-                        self.actor.parameters(), self.grad_clip
-                    )
-                    self.actor_optimizer.step()
-
-                    # Calculate critic loss
-                    values = self.critic(batch_states).squeeze(-1)
-                    critic_loss = F.smooth_l1_loss(values, batch_returns)
-
-                    # Update critic network
-                    self.critic_optimizer.zero_grad()
-                    critic_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(
-                        self.critic.parameters(), self.grad_clip
-                    )
-                    self.critic_optimizer.step()
-
-            # Log episode results
             print(
-                f"Episode {episode + 1}/{num_episodes}, Reward: {episode_reward}, Total Loss: {actor_loss + critic_loss}"
+                f"Iteration: {iteration}, Batch rewards: {np.sum(np.concatenate(batch_rewards))}, Got flag: {batch_flags}, Average actor loss = {loss:.2f}, Percentage completed: {timestep * 100 / max_timesteps:.2f}%"
             )
 
-            if output:
-                with open(
-                    os.path.join(output_path, output_file), mode="a", newline=""
-                ) as file:
-                    writer = csv.writer(file)
-                    writer.writerow(
-                        [episode + 1, episode_reward, 1 if got_the_flag else 0]
-                    )
-
-            # Save model periodically
-            if (episode + 1) % 100 == 0:
-                self.save("model")
+            if iteration % self.options.save_freq == 0:
+                torch.save(
+                    self.actor.state_dict(),
+                    os.path.join(self.options.model_path, model_actor),
+                )
+                torch.save(
+                    self.critic.state_dict(),
+                    os.path.join(self.options.model_path, model_critic),
+                )
 
 
 def main():
-    """Sets up the environment and agent, then trains the agent."""
     world, stage, env_version = 1, 1, "v0"
     specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
-    env = create_env(map=specification)
-    sample_observation = env.reset()
-    print("Sample observation shape:", sample_observation.shape)
-    agent = PPOAgent(env.observation_space.shape, env.action_space.n)
+    env = create_env(map=specification, skip=4)
+    options = PPOHyperparameters(render=True, specification=specification)
+    agent = PPOAgent(env, options)
 
     # agent.actor.load_state_dict(
-    #     torch.load(ACTOR_PATH, map_location=torch.device("cpu"))
+    #     torch.load("model/ppo_actor.pth", map_location=torch.device("cpu"))
     # )
     # agent.critic.load_state_dict(
-    #     torch.load(CRITIC_PATH, map_location=torch.device("cpu"))
+    #     torch.load("model/ppo_critic.pth", map_location=torch.device("cpu"))
     # )
 
-    agent.train2(env, 1000, render=True, output=specification + ".csv")
-    agent.save()
+    total_timesteps = 3_000_000
+    agent.train(max_timesteps=total_timesteps)
 
 
 if __name__ == "__main__":
