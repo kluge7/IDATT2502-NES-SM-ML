@@ -28,6 +28,11 @@ for path in paths:
     print(path)
 
 
+data_folder_min = os.path.join(
+    py_dir, "../data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
+)  # path to info.txt
+
+
 action_map = {
     7: "A",
     6: "up",
@@ -108,7 +113,7 @@ def load_dataset() -> tuple[torch.Tensor, list]:
             images.append(img_tensor)
 
             action = parse_filename_to_action(filename)
-            # label = get_actions(action)
+            action = get_actions(action)
             labels.append(action)
 
     images = torch.stack(images)
