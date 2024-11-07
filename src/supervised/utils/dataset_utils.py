@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.torch_version
 from PIL import Image
+from torch.utils.data import DataLoader
 from torchvision import transforms
 
 py_file = os.path.abspath(__file__)  # path to main.py
@@ -35,6 +36,76 @@ def display_image(image_tensor: torch.Tensor) -> None:
     # Display the image
     plt.imshow(pil_image, cmap="gray")
     plt.axis("off")  # Turn off axis numbers
+    plt.show()
+
+
+def binary_list_to_integer(binary_list):
+    """Convert a list of 8 binary values (0 or 1) to an integer.
+
+    The least significant bit is at index 7.
+    """
+    binary_ints = np.round(binary_list).astype(int)
+    return sum(bit << (7 - i) for i, bit in enumerate(binary_ints))
+
+
+def display_image_series(dataloader: DataLoader, rows: int, cols: int) -> None:
+    """Display a series of images from a DataLoader in a grid, with index at the top and label at the bottom.
+
+    Args:
+    dataloader (DataLoader): DataLoader containing the images
+    rows (int): Number of rows in the grid
+    cols (int): Number of columns in the grid
+    """
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 3, rows * 3.5))
+    axes = axes.flatten()
+
+    images, labels = next(iter(dataloader))  # Get a batch of images and labels
+
+    for i, (image_tensor, label) in enumerate(zip(images, labels)):
+        if i >= rows * cols:
+            break
+
+        # Convert the PyTorch tensor to a numpy array
+        image_np = (image_tensor.squeeze().cpu().numpy() * 255).astype(np.uint8)
+
+        # Clear the current axis
+        axes[i].clear()
+
+        # Display the image
+        axes[i].imshow(image_np, cmap="gray")
+        axes[i].axis("off")
+
+        # Add index at the top
+        axes[i].text(
+            0.5,
+            1.05,
+            f"Index: {i}",
+            horizontalalignment="center",
+            verticalalignment="center",
+            transform=axes[i].transAxes,
+            fontsize=10,
+        )
+
+        # Handle label display based on its type
+
+        label_str = f"Action: {get_actions(binary_list_to_integer(label.tolist()))}"
+
+        # Add label at the bottom
+        axes[i].text(
+            0.5,
+            -0.1,
+            label_str,
+            horizontalalignment="center",
+            verticalalignment="center",
+            transform=axes[i].transAxes,
+            fontsize=10,
+        )
+
+    # Remove any unused subplots
+    for j in range(i + 1, rows * cols):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
     plt.show()
 
 
@@ -68,11 +139,15 @@ def get_action_from_bit(actions: list) -> list:
     return action_keys
 
 
-def load_dataset(
-    data_dir=data_folder,
-) -> tuple[torch.Tensor, list]:
-    images = []
-    labels = []
+def extract_frame_number(filename):
+    match = re.search(r"f(\d+)", filename)
+    if match:
+        return int(match.group(1))
+    return 0  # Return 0 if no frame number is found
+
+
+def load_dataset(data_dir=data_folder, frame_skip=4) -> tuple[torch.Tensor, list]:
+    image_data = []
 
     # Define the image transformaiton.
     # Turn the image grayscale and convert to tensor
@@ -87,16 +162,27 @@ def load_dataset(
 
     for filename in os.listdir(data_dir):
         if filename.endswith(".png"):
+            frame_number = extract_frame_number(filename)
+            if frame_number % frame_skip != 0:
+                continue
             img_path = os.path.join(data_dir, filename)
             img = Image.open(img_path)
             img_tensor = transform(img)
-            images.append(img_tensor)
 
             action = parse_filename_to_action(filename)
             action = get_actions(action)
-            labels.append(action)
+
+            image_data.append((frame_number, img_tensor, action))
+
+    # Sort the image_data based on frame number
+    image_data.sort(key=lambda x: x[0])
+
+    # Separate the sorted data
+    images = [item[1] for item in image_data]
+    labels = [item[2] for item in image_data]
 
     images = torch.stack(images)
+
     return images, labels
 
 
