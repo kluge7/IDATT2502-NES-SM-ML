@@ -406,8 +406,8 @@ class PPOAgent:
 def main():
     world, stage, env_version = 1, 1, "v0"
     specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
+    env = create_env(map=specification, skip=4)
 
-    env = create_env(map=specification, action_repeat=4)
     options = PPOHyperparameters(render=True, specification=specification)
 
     agent = PPOAgent(env, options)
