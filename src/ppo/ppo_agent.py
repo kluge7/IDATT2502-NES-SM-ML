@@ -115,7 +115,9 @@ class PPOAgent:
             done = False
             flag = False
 
-            for _episode_step in range(self.options.max_timesteps_per_episode):
+            def collect_batch(episode_rewards, episode_values, episode_dones):
+                nonlocal observations, done, flag, timestep
+
                 if self.options.render:
                     self.env.render()
 
@@ -130,7 +132,6 @@ class PPOAgent:
                     .to(self.device)
                 )
                 observations, reward, done, info = self.env.step(action)
-
                 if info.get("flag_get"):
                     flag = True
 
@@ -139,8 +140,19 @@ class PPOAgent:
                 batch_actions.append(action)
                 batch_log_probabilities.append(log_probabilities)
 
+            # Run the main episode loop
+            for _episode_step in range(self.options.max_timesteps_per_episode):
+                collect_batch(episode_rewards, episode_values, episode_dones)
                 if done:
                     break
+
+            # If we are close to the timestep limit, continue until the episode finishes
+            if (
+                timestep + self.options.max_timesteps_per_episode
+                >= self.options.timesteps_per_batch
+            ) and not done:
+                while not done:
+                    collect_batch(episode_rewards, episode_values, episode_dones)
 
             batch_lengths.append(_episode_step + 1)
             batch_rewards.append(episode_rewards)
@@ -154,6 +166,8 @@ class PPOAgent:
             ) as file:
                 writer = csv.writer(file)
                 writer.writerow([np.sum(episode_rewards), 1 if flag else 0])
+
+            # tensorboard_writer.add_scalar("Training/Episode/Reward", np.sum(episode_rewards))
 
             if flag:
                 batch_flags += 1
@@ -190,7 +204,8 @@ class PPOAgent:
         step = batch_observations.size(0)
         indices = np.arange(step)
         minibatch_size = step // self.options.num_minibatches
-        loss = []
+        actor_losses = []
+        critic_losses = []
 
         for _ in range(self.options.n_updates_per_iteration):
             if self.options.dynamic_lr:
@@ -245,16 +260,17 @@ class PPOAgent:
                 )
                 self.critic_optimizer.step()
 
-                loss.append(actor_loss.detach())
+                actor_losses.append(actor_loss.detach())
+                critic_losses.append(critic_loss.detach())
 
             if kl > self.options.target_kl:
                 break
 
-        return np.mean(loss)
+        return np.mean(actor_losses), np.mean(critic_losses)
 
-    def train(
-        self, max_timesteps, model_actor="ppo_actor.pth", model_critic="ppo_critic.pth"
-    ):
+    def train(self, max_timesteps):
+        # tensorboard_writer = SummaryWriter(log_dir=self.options.tensorboard_log_dir)
+
         os.makedirs(self.options.model_path, exist_ok=True)
         os.makedirs(self.options.training_result_path, exist_ok=True)
         os.makedirs(self.options.episode_result_path, exist_ok=True)
@@ -313,7 +329,7 @@ class PPOAgent:
             batch_rtgs = advantages + v.detach()
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
 
-            loss = self.update(
+            average_actor_loss, average_critic_loss = self.update(
                 batch_observations,
                 batch_actions,
                 batch_log_probabilities,
@@ -322,6 +338,12 @@ class PPOAgent:
                 timestep,
                 max_timesteps,
             )
+
+            # # Log to TensorBoard
+            # tensorboard_writer.add_scalar("Training/Epoch/AverageActorLoss", average_actor_loss, iteration)
+            # tensorboard_writer.add_scalar("Training/Epoch/AverageCriticLoss", average_critic_loss, iteration)
+            # tensorboard_writer.add_scalar("Training/Epoch/Reward", np.sum(np.concatenate(batch_rewards)), iteration)
+            # tensorboard_writer.add_scalar("Training/Epoch/GotFlag", batch_flags, iteration)
 
             with open(
                 os.path.join(self.options.training_result_path, training_output_file),
@@ -334,39 +356,61 @@ class PPOAgent:
                         iteration,
                         np.sum(np.concatenate(batch_rewards)),
                         batch_flags,
-                        loss,
+                        average_actor_loss,
                         f"{timestep * 100 / max_timesteps:.2f}%",
                     ]
                 )
 
             print(
-                f"Iteration: {iteration}, Batch rewards: {np.sum(np.concatenate(batch_rewards))}, Got flag: {batch_flags}, Average actor loss = {loss:.2f}, Percentage completed: {timestep * 100 / max_timesteps:.2f}%"
+                f"Iteration: {iteration}, Batch rewards: {np.sum(np.concatenate(batch_rewards))}, Got flag: {batch_flags}, Average actor loss = {average_actor_loss:.2f}, Percentage completed: {timestep * 100 / max_timesteps:.2f}%"
             )
 
             if iteration % self.options.save_freq == 0:
-                torch.save(
-                    self.actor.state_dict(),
-                    os.path.join(self.options.model_path, model_actor),
+                self.save_networks()
+
+        # tensorboard_writer.close()
+
+    def save_networks(self):
+        torch.save(
+            self.actor.state_dict(),
+            str(os.path.join(self.options.model_path, self.options.model_actor)),
+        )
+        torch.save(
+            self.critic.state_dict(),
+            str(os.path.join(self.options.model_path, self.options.model_critic)),
+        )
+
+    def load_networks(self):
+        try:
+            self.actor.load_state_dict(
+                torch.load(
+                    str(os.path.join(self.options.model_path, self.options.model_actor))
                 )
-                torch.save(
-                    self.critic.state_dict(),
-                    os.path.join(self.options.model_path, model_critic),
+            )
+            self.critic.load_state_dict(
+                torch.load(
+                    str(
+                        os.path.join(self.options.model_path, self.options.model_critic)
+                    )
                 )
+            )
+        except FileNotFoundError:
+            print(
+                f"Error: Could not find model files at "
+                f"{str(os.path.join(self.options.model_path, self.options.model_actor))} or "
+                f"{str(os.path.join(self.options.model_path, self.options.model_critic))}. "
+                f"Starting training from scratch..."
+            )
 
 
 def main():
     world, stage, env_version = 1, 1, "v0"
     specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
     env = create_env(map=specification, skip=4)
-    options = PPOHyperparameters(render=True, specification=specification)
-    agent = PPOAgent(env, options)
 
-    # agent.actor.load_state_dict(
-    #     torch.load("model/ppo_actor.pth", map_location=torch.device("cpu"))
-    # )
-    # agent.critic.load_state_dict(
-    #     torch.load("model/ppo_critic.pth", map_location=torch.device("cpu"))
-    # )
+    options = PPOHyperparameters(render=True, specification=specification)
+
+    agent = PPOAgent(env, options)
 
     total_timesteps = 3_000_000
     agent.train(max_timesteps=total_timesteps)
