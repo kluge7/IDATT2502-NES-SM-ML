@@ -1,9 +1,9 @@
 class PPOHyperparameters:
     def __init__(
         self,
-        timesteps_per_batch=2000,
-        max_timesteps_per_episode=400,
-        gamma=0.90,
+        timesteps_per_batch=4000,
+        max_timesteps_per_episode=600,
+        gamma=0.99,
         n_updates_per_iteration=5,
         clip=0.2,
         lr=1e-4,
@@ -11,7 +11,7 @@ class PPOHyperparameters:
         min_lr_limit=0.000001,
         num_minibatches=5,
         lam=0.98,
-        ent_coef=0.01,
+        ent_coef=0.1,
         max_grad_norm=0.5,
         target_kl=0.02,
         save_freq=1,
