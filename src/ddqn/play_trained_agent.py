@@ -1,25 +1,23 @@
+import time
+
+import hyperparameters as hp
 import torch
-import time  # Import time module for adding delays
+from ddqn_agent import DQNAgent
+
 from src.environment.environment import create_env
-from ddqn_agent import DQNAgent  # Assuming ddqn_agent.py contains your DQNAgent class
 
-MODEL_PATH = 'model/ddqn_model.pth'  # Make sure this matches the save path in DQNAgent
 
-# Define the play_trained_agent function to run and render the trained model
-def play_trained_agent(runs=50, delay=0.05):
+def play_trained_agent():
     env = create_env()
 
-    # Get input dimensions and number of actions
     in_dim = env.observation_space.shape
     num_actions = env.action_space.n
 
-    # Initialize the agent, ensure device compatibility, and load the trained model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     agent = DQNAgent(state_shape=in_dim, action_size=num_actions, device=device)
-    agent.load_model(MODEL_PATH)  # Use the model path for loading
+    agent.load_model(hp.MODEL_SAVE_PATH)
 
-    # Run the agent in the environment for the specified number of runs
-    for run in range(runs):
+    for run in range(hp.RUNS):
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device)
         done = False
@@ -27,7 +25,6 @@ def play_trained_agent(runs=50, delay=0.05):
 
         print(f"\nRun {run + 1}:")
 
-        # Run through the environment until done
         while not done:
             env.render()
             action = agent.select_action(state)  # No exploration during play
@@ -35,11 +32,12 @@ def play_trained_agent(runs=50, delay=0.05):
             state = torch.tensor(next_state, dtype=torch.float32, device=device)
             total_reward += reward
 
-            time.sleep(delay)  # Add delay to slow down the playback
+            time.sleep(hp.DELAY)
 
         print(f"Total Reward for Run {run + 1}: {total_reward}")
 
     env.close()
+
 
 if __name__ == "__main__":
     play_trained_agent()

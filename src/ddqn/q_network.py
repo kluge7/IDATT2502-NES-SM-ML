@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class QNetwork(nn.Module):
     def __init__(self, input_channels: int, action_size: int):
-        super(QNetwork, self).__init__()
+        super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(
                 input_channels, 32, kernel_size=8, stride=4
@@ -19,6 +19,17 @@ class QNetwork(nn.Module):
         )
 
     def forward(self, x):
+        """Defines the forward pass of the Q-network.
+
+        Args:
+            x (torch.Tensor): Input tensor representing the state, with dimensions
+                (batch_size, input_channels, height, width).
+
+        Returns:
+            torch.Tensor: Output tensor representing action-value estimates for each
+            possible action, with dimensions (batch_size, action_size).
+
+        """
         x = self.features(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
