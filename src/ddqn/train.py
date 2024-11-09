@@ -44,7 +44,6 @@ def main():
                 max_x_pos = max(max_x_pos, info.get("x_pos", 0))
                 if info.get("flag_get", False):
                     flag_reached = True
-                    done = True
 
                 agent.memory.push(
                     torch.tensor(state, dtype=torch.float32),
