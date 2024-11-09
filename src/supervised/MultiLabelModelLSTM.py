@@ -146,30 +146,20 @@ images, labels = dataset_utils.load_dataset()
 
 possible_actions = ["A", "up", "left", "B", "start", "right", "down", "NOOP"]
 
-images_train, images_test, labels_train, labels_test = dataset_utils.train_test_split(
-    images, labels, 0.7
-)
 num_classes = 8
 
 mlb = MultiLabelBinarizer(classes=possible_actions)
-encoded_labels_train = mlb.fit_transform(labels_train)
-encoded_labels_test = mlb.transform(labels_test)
-
+encoded_labels_train = mlb.fit_transform(labels)
 y_train_tensor = torch.tensor(encoded_labels_train, dtype=torch.float32)
-y_test_tensor = torch.tensor(encoded_labels_test, dtype=torch.float32)
 
 # Parameters
 seq_length = 4  # Example sequence length, adjust based on your needs
 
 # Generate datasets with sequences
-train_dataset = FrameSequenceDataset(images_train, y_train_tensor, seq_length)
-test_dataset = FrameSequenceDataset(images_test, y_test_tensor, seq_length)
+train_dataset = FrameSequenceDataset(images, y_train_tensor, seq_length)
 
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 model = MultiLabelModel(num_classes)
 
 model.train(train_loader, epochs=50)
-
-model.evaluate(test_loader)
