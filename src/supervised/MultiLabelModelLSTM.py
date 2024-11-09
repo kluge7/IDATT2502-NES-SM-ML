@@ -125,6 +125,7 @@ class MultiLabelModel:
 
                 # Write the epoch and loss to the CSV file
                 writer.writerow([epoch + 1, average_epoch_loss])
+                file.flush()
 
     def evaluate(self, test_loader):
         self.model.eval()
