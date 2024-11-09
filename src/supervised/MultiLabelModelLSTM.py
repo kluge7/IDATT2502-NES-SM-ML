@@ -1,3 +1,6 @@
+import csv
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +10,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from torch.utils.data import DataLoader, Dataset
 
 from src.supervised.utils import dataset_utils
+from src.utils import get_unique_filename
 
 
 class FrameSequenceDataset(Dataset):
@@ -87,18 +91,40 @@ class MultiLabelModel:
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
 
     def train(self, train_loader, epochs=10):
-        self.model.train()
-        for epoch in range(epochs):
-            epoch_loss = 0
-            for inputs, labels in train_loader:
-                self.optimizer.zero_grad()
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, labels)
-                loss.backward()
-                self.optimizer.step()
-                epoch_loss += loss.item()
-            print(f"Epoch: {epoch}, Loss: {epoch_loss}")
-            self.save_model("src/supervised/model/MultiLabelLSTM.pth")
+        training_result_path = "src/supervised/training_results/"
+        os.makedirs("src/supervised/model/", exist_ok=True)
+        os.makedirs("src/supervised/model/checkpoints/", exist_ok=True)
+        os.makedirs(training_result_path, exist_ok=True)
+
+        output_csv = "training_results.csv"
+        training_output_file = get_unique_filename(training_result_path, output_csv)
+
+        with open(training_output_file, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Epoch", "Loss"])
+
+            self.model.train()
+            for epoch in range(epochs):
+                epoch_loss = 0
+                for inputs, labels in train_loader:
+                    self.optimizer.zero_grad()
+                    outputs = self.model(inputs)
+                    loss = self.criterion(outputs, labels)
+                    loss.backward()
+                    self.optimizer.step()
+                    epoch_loss += loss.item()
+
+                # Calculate average loss for the epoch
+                average_epoch_loss = epoch_loss / len(train_loader)
+
+                # Save model after each epoch and every 100 epochs in a checkpoint
+                self.save_model("src/supervised/model/MultiLabelLSTM.pth")
+                if epoch % 100 == 0:
+                    save_path = f"src/supervised/model/checkpoints/MultiLabelLSTM-epoch{epoch}.pth"
+                    self.save_model(save_path)
+
+                # Write the epoch and loss to the CSV file
+                writer.writerow([epoch + 1, average_epoch_loss])
 
     def evaluate(self, test_loader):
         self.model.eval()
