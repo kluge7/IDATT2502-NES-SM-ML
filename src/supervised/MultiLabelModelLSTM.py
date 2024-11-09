@@ -35,6 +35,7 @@ class FrameSequenceDataset(Dataset):
 class MultiLabelNet(nn.Module):
     def __init__(self, num_classes, lstm_hidden_size=64, num_lstm_layers=1):
         super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
         self.pool = nn.MaxPool2d(2, 2)
@@ -55,8 +56,10 @@ class MultiLabelNet(nn.Module):
         self.fc1 = nn.Linear(lstm_hidden_size, 128)
         self.dropout = nn.Dropout(0.5)
         self.fc2 = nn.Linear(128, num_classes)
+        self.to(self.device)
 
     def forward(self, x):
+        x = x.to(self.device)
         batch_size, seq_length, channels, height, width = x.size()
 
         # Combine batch and sequence dimensions for CNN processing
@@ -87,6 +90,7 @@ class MultiLabelNet(nn.Module):
 class MultiLabelModel:
     def __init__(self, num_classes, lstm_hidden_size=64, num_lstm_layers=1):
         self.model = MultiLabelNet(num_classes, lstm_hidden_size, num_lstm_layers)
+        self.device = self.model.device
         self.criterion = nn.BCEWithLogitsLoss()  # Combines Sigmoid and BCELoss
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
 
@@ -107,6 +111,7 @@ class MultiLabelModel:
             for epoch in range(epochs):
                 epoch_loss = 0
                 for inputs, labels in train_loader:
+                    inputs, labels = inputs.to(self.device), labels.to(self.device)
                     self.optimizer.zero_grad()
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, labels)
@@ -135,12 +140,13 @@ class MultiLabelModel:
 
         with torch.no_grad():
             for inputs, labels in test_loader:
+                inputs, labels = inputs.to(self.device), labels.to(self.device)
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, labels)
                 total_loss += loss.item()
 
-                all_outputs.append(outputs)
-                all_labels.append(labels)
+                all_outputs.append(outputs.cpu())
+                all_labels.append(labels.cpu())
 
         outputs = torch.cat(all_outputs)
         labels = torch.cat(all_labels)
@@ -160,7 +166,6 @@ class MultiLabelModel:
     def save_model(self, file_path):
         """Save the model parameters to a file."""
         torch.save(self.model.state_dict(), file_path)
-        print(f"Model saved to {file_path}")
 
     def load_model(self, file_path):
         """Load the model parameters from a file."""
@@ -183,7 +188,7 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
 
     model = MultiLabelModel(num_classes=8)
-    model.train(train_loader, epochs=50)
+    model.train(train_loader, epochs=10_000)
 
 
 if __name__ == "__main__":
