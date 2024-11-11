@@ -15,6 +15,41 @@ py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
 data_folder = os.path.join(py_dir, "data-smb/data-smb-1-1")  # path to info.txt
 
 
+# level 1-1, 1-2, etc.
+def get_data_by_level(levels, only_win=True):
+    py_file_ = os.path.abspath(__file__)  # path to main.py
+    py_dir_ = os.path.dirname(py_file_)  # path to the parent dir of main.py
+    data_folder_ = os.path.join(py_dir_, "data-smb")  # path to data-smb
+
+    print(f"Searching in: {data_folder_}")
+    res = []
+
+    # Ensure levels is a list
+    if isinstance(levels, str):
+        matches = [levels.lower()]
+    else:
+        matches = [level.lower() for level in levels]
+
+    for root, file_names in os.walk(data_folder_):
+        for file_name in file_names:
+            # Check if any level matches
+            if any(m in file_name.lower() for m in matches):
+                if only_win and "win" not in file_name.lower():
+                    continue  # Skip if "win" is required but not found
+                res.append(os.path.join(root, file_name))
+                print(f"Match found: {file_name}")
+
+    if not res:
+        print(f"No matches found for levels {levels}")
+
+    # Uncomment to print the result list if needed
+    # print("Result:", res)
+
+
+# Example call to find either level "_1-1_" or "_1-2_", with the option for "win"
+get_data_by_level(["_1-1_", "_1-2_"], only_win=True)
+
+
 def get_paths():
     path_list = []
     for subfolder in listdir(data_folder):
@@ -25,8 +60,6 @@ def get_paths():
 
 
 paths = get_paths()
-for path in paths:
-    print(path)
 
 
 data_folder_min = os.path.join(
