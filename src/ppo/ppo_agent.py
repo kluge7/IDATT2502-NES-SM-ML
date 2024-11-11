@@ -542,7 +542,7 @@ def main():
     agent = PPOAgent(env, options)
     agent.load_networks(actor_path="src/ppo/model/ActionPredictionModel.pth")
 
-    total_timesteps = 3_000_000 * 0.4 * 0.3
+    total_timesteps = 3_000_000
     agent.train(max_timesteps=total_timesteps)
 
 
