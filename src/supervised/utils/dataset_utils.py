@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.torch_version
+from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -60,7 +61,6 @@ def get_paths():
 
 
 paths = get_paths()
-
 
 data_folder_min = os.path.join(
     py_dir, "../data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
@@ -118,6 +118,12 @@ def display_image_series(dataloader: DataLoader, rows: int, cols: int) -> None:
             break
 
         # Convert the PyTorch tensor to a numpy array
+        # Ensure the image is single-channel (grayscale) by taking only the first channel if needed
+        if image_tensor.shape[0] == 4:  # if 4 channels, keep only the first one
+            image_tensor = image_tensor[0]
+        elif image_tensor.shape[0] == 3:  # if RGB, convert to grayscale by averaging
+            image_tensor = image_tensor.mean(0)
+
         image_np = (image_tensor.squeeze().cpu().numpy() * 255).astype(np.uint8)
 
         # Clear the current axis
@@ -139,7 +145,6 @@ def display_image_series(dataloader: DataLoader, rows: int, cols: int) -> None:
         )
 
         # Handle label display based on its type
-
         label_str = f"Action: {get_actions(binary_list_to_integer(label.tolist()))}"
 
         # Add label at the bottom
@@ -194,11 +199,6 @@ def get_action_from_bit(actions: list) -> list:
     return action_keys
 
 
-# def load_dataset() -> tuple[torch.Tensor, list]:
-# images = []
-# labels = []
-
-
 def extract_frame_number(filename):
     match = re.search(r"f(\d+)", filename)
     if match:
@@ -206,11 +206,12 @@ def extract_frame_number(filename):
     return 0  # Return 0 if no frame number is found
 
 
-def load_dataset(data_dir=data_folder, frame_skip=4) -> tuple[torch.Tensor, list]:
+def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
+    paths = get_paths()
+    complex_movement_set = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
     image_data = []
 
-    # Define the image transformaiton.
-    # Turn the image grayscale and convert to tensor
+    # Define the image transformation
     transform = transforms.Compose(
         [
             transforms.Grayscale(num_output_channels=1),
@@ -225,31 +226,41 @@ def load_dataset(data_dir=data_folder, frame_skip=4) -> tuple[torch.Tensor, list
             img_path = filename
 
             frame_number = extract_frame_number(filename)
-            if frame_number % frame_skip != 0:
-                continue
+
             img_path = os.path.join(data_dir, filename)
 
             img = Image.open(img_path)
-            img_tensor = transform(img)
+            img_tensor = transform(img)  # shape: [1, 84, 84]
 
             action = parse_filename_to_action(filename)
-            action = get_actions(action)
+            action_list = get_actions(action)
+            action_tuple = tuple(sorted(action_list))
 
-            image_data.append((frame_number, img_tensor, action))
+            if action_tuple in complex_movement_set:
+                image_data.append((frame_number, img_tensor, action_list))
 
-    # Sort the image_data based on frame number
+    # Sort by frame number for sequential order
     image_data.sort(key=lambda x: x[0])
 
-    # Separate the sorted data
-    images = [item[1] for item in image_data]
-    labels = [item[2] for item in image_data]
+    # Prepare 4-channel images by stacking 4 consecutive frames
+    images = []
+    labels = []
+    for i in range(len(image_data) - 3):  # -3 because we take 4 frames at a time
+        frames = [image_data[i + j][1] for j in range(4)]  # Get 4 consecutive frames
+        combined_frame = torch.cat(frames, dim=0)  # Concatenate along channel axis
+        images.append(combined_frame)
+        labels.append(
+            image_data[i][2]
+        )  # Assuming the first frame's action label applies to all 4
 
-    images = torch.stack(images)
+    # Stack all images into a single tensor
+    images = torch.stack(images)  # shape: [batch_size, 4, 84, 84]
 
     return images, labels
 
 
 def load_dataset_without_get_action() -> tuple[torch.Tensor, list]:
+    paths = get_paths()
     images = []
     labels = []
 
