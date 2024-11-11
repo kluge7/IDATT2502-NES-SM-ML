@@ -1,5 +1,6 @@
 import os
 import re
+from os import listdir
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,9 +13,27 @@ from torchvision import transforms
 
 py_file = os.path.abspath(__file__)  # path to main.py
 py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
-data_folder = os.path.join(
+data_folder = os.path.join(py_dir, "data-smb/data-smb-1-1")  # path to info.txt
+
+
+def get_paths():
+    path_list = []
+    for subfolder in listdir(data_folder):
+        for sub in listdir(os.path.join(data_folder, subfolder)):
+            path_list.append(os.path.join(data_folder, subfolder, sub))
+
+    return path_list
+
+
+paths = get_paths()
+for path in paths:
+    print(path)
+
+
+data_folder_min = os.path.join(
     py_dir, "../data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
 )  # path to info.txt
+
 
 action_map = {
     7: "A",
@@ -116,9 +135,12 @@ def display_image_series(dataloader: DataLoader, rows: int, cols: int) -> None:
 
 
 def parse_filename_to_action(filename: str) -> int:
-    components = re.split(r"[_-]", filename)
-    action = components[6].replace("a", "")
-    return int(action)
+    match = re.search(r"_a(\d+)", filename)
+    if match:
+        action = int(match.group(1))
+        return action
+    else:
+        raise ValueError("Action not found in the filename")
 
 
 def get_actions(input_integer: int) -> list:
@@ -143,6 +165,11 @@ def get_action_from_bit(actions: list) -> list:
                 action_comb.append(i)
         action_keys.append(action_comb)
     return action_keys
+
+
+# def load_dataset() -> tuple[torch.Tensor, list]:
+# images = []
+# labels = []
 
 
 def extract_frame_number(filename):
@@ -171,11 +198,14 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
         ]
     )
 
-    for filename in os.listdir(data_dir):
+    for filename in paths:
         if filename.endswith(".png"):
+            img_path = filename
+
             frame_number = extract_frame_number(filename)
 
             img_path = os.path.join(data_dir, filename)
+
             img = Image.open(img_path)
             img_tensor = transform(img)  # shape: [1, 84, 84]
 
@@ -208,12 +238,57 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
     return images, labels
 
 
+def load_dataset_without_get_action() -> tuple[torch.Tensor, list]:
+    images = []
+    labels = []
+
+    # Define the image transformaiton.
+    # Turn the image grayscale and convert to tensor
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((240, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
+
+    for filename in paths:
+        if filename.endswith(".png"):
+            img_path = filename
+            img = Image.open(img_path)
+            img_tensor = transform(img)
+            images.append(img_tensor)
+
+            action = parse_filename_to_action(filename)
+            labels.append(action)
+
+    images = torch.stack(images)
+
+    return images, labels
+
+
 def get_actions_list():
     actions = []
     for filename in os.listdir(data_folder):
         action_ = re.findall("%([0-9]+)", filename.lower())
         actions.append(action_)
     return actions
+
+
+def preprocess_frame(frame):
+    frame = Image.fromarray(frame)
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((240, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
+    frame = transform(frame)
+    frame = frame.unsqueeze(0)
+    return frame
 
 
 # Generate all possible combinations
