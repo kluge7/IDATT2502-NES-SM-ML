@@ -13,10 +13,10 @@ from torchvision import transforms
 
 py_file = os.path.abspath(__file__)  # path to main.py
 py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
-data_folder = os.path.join(py_dir, "data-smb/data-smb-1-1")  # path to info.txt
+data_folder = os.path.join(py_dir, "data-smb")  # path to info.txt
 
 
-# level 1-1, 1-2, etc.
+# level _1-1_, _1-2_, etc.
 def get_data_by_level(levels, only_win=True):
     py_file_ = os.path.abspath(__file__)  # path to main.py
     py_dir_ = os.path.dirname(py_file_)  # path to the parent dir of main.py
@@ -31,24 +31,15 @@ def get_data_by_level(levels, only_win=True):
     else:
         matches = [level.lower() for level in levels]
 
-    for root, file_names in os.walk(data_folder_):
+    for root, _dir_names, file_names in os.walk(data_folder_):
         for file_name in file_names:
             # Check if any level matches
             if any(m in file_name.lower() for m in matches):
                 if only_win and "win" not in file_name.lower():
                     continue  # Skip if "win" is required but not found
                 res.append(os.path.join(root, file_name))
-                print(f"Match found: {file_name}")
 
-    if not res:
-        print(f"No matches found for levels {levels}")
-
-    # Uncomment to print the result list if needed
-    # print("Result:", res)
-
-
-# Example call to find either level "_1-1_" or "_1-2_", with the option for "win"
-get_data_by_level(["_1-1_", "_1-2_"], only_win=True)
+    return res
 
 
 def get_paths():
@@ -58,13 +49,6 @@ def get_paths():
             path_list.append(os.path.join(data_folder, subfolder, sub))
 
     return path_list
-
-
-paths = get_paths()
-
-data_folder_min = os.path.join(
-    py_dir, "../data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
-)  # path to info.txt
 
 
 action_map = {
@@ -207,7 +191,7 @@ def extract_frame_number(filename):
 
 
 def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
-    paths = get_paths()
+    paths = get_data_by_level(["_1-1_", "_4-1_"])
     complex_movement_set = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
     image_data = []
 
@@ -260,7 +244,7 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
 
 
 def load_dataset_without_get_action() -> tuple[torch.Tensor, list]:
-    paths = get_paths()
+    paths = get_data_by_level(["_1-1_", "_4-1_"])
     images = []
     labels = []
 
