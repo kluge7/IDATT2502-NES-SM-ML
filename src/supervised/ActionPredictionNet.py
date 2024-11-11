@@ -3,18 +3,18 @@ import os
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from sklearn.preprocessing import MultiLabelBinarizer
+from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 from torch.utils.data import DataLoader, Dataset
 
 from src.supervised.utils import dataset_utils
 from src.utils import get_unique_filename
-from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 
-
-action_to_index = {tuple(sorted(action)): i for i, action in enumerate(COMPLEX_MOVEMENT)}
+action_to_index = {
+    tuple(sorted(action)): i for i, action in enumerate(COMPLEX_MOVEMENT)
+}
 index_to_action = {idx: action for idx, action in enumerate(COMPLEX_MOVEMENT)}
+
 
 class FrameSequenceDataset(Dataset):
     def __init__(self, images, labels):
@@ -30,10 +30,10 @@ class FrameSequenceDataset(Dataset):
         return image, label
 
 
-
-
 class ActionPredictionNet(nn.Module):
-    def __init__(self, input_channels: int, action_size: int):  # Correct the init method        super(ActionPredictionNet, self).__init__()
+    def __init__(
+        self, input_channels: int, action_size: int
+    ):  # Correct the init method        super(ActionPredictionNet, self).__init__()
         super().__init__()  # Initialize the parent class before defining layers
         print(input)
         self.features = nn.Sequential(
@@ -68,11 +68,12 @@ class ActionPredictionNet(nn.Module):
         return x
 
 
-
 class ActionPredictionModel:
-    def __init__(self, input_channels: int = 3, action_size: int = len(action_to_index)):
+    def __init__(
+        self, input_channels: int = 3, action_size: int = len(action_to_index)
+    ):
         self.model = ActionPredictionNet(input_channels, action_size)
-        #self.device = self.model.device
+        # self.device = self.model.device
         self.criterion = nn.CrossEntropyLoss()  # For single-class classification
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
 
@@ -101,11 +102,11 @@ class ActionPredictionModel:
             for epoch in range(epochs):
                 epoch_loss = 0
                 for inputs, labels in train_loader:
-                    #inputs, labels = inputs.to(self.device), labels.to(self.device)
+                    # inputs, labels = inputs.to(self.device), labels.to(self.device)
 
                     # Zero the gradients from the previous step
                     self.optimizer.zero_grad()
-                    
+
                     # Forward pass
                     outputs = self.model(inputs)
                     print(outputs)
@@ -125,7 +126,7 @@ class ActionPredictionModel:
 
                 # Save model after each epoch
                 self.save_model("src/supervised/model/onehot/ActionPredictionModel.pth")
-                
+
                 # Save checkpoint every 100 epochs
                 if epoch % 100 == 0:
                     save_path = f"src/supervised/model/onehot/checkpoints/ActionPredictionModel-epoch{epoch}.pth"
@@ -142,17 +143,15 @@ def main():
 
     labels = [action_to_index[tuple(sorted(label))] for label in labels]
     y_train_tensor = torch.tensor(labels, dtype=torch.long)
-    images = images.squeeze(2)  
-    seq_length = 4
+    images = images.squeeze(2)
     train_dataset = FrameSequenceDataset(images, y_train_tensor)
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
-  
-    input_channels = 4  
+
+    input_channels = 4
     action_size = len(action_to_index)
 
     model = ActionPredictionModel(input_channels, action_size)
     model.train(train_loader, epochs=1)
-
 
 
 if __name__ == "__main__":

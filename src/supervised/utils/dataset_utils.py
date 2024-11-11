@@ -5,11 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.torch_version
+from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
-
 
 py_file = os.path.abspath(__file__)  # path to main.py
 py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
@@ -153,15 +152,13 @@ def extract_frame_number(filename):
     return 0  # Return 0 if no frame number is found
 
 
-
-
-import torch
-from torchvision import transforms
-from PIL import Image
 import os
 
+import torch
+
+
 def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
-    COMPLEX_MOVEMENT_SET = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
+    complex_movement_set = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
     image_data = []
 
     # Define the image transformation
@@ -186,10 +183,10 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
             action_list = get_actions(action)
             action_tuple = tuple(sorted(action_list))
 
-            if action_tuple in COMPLEX_MOVEMENT_SET:
+            if action_tuple in complex_movement_set:
                 image_data.append((frame_number, img_tensor, action_list))
             else:
-                print(f'action: {action_tuple}, image_number: {frame_number}')
+                print(f"action: {action_tuple}, image_number: {frame_number}")
 
     # Sort by frame number for sequential order
     image_data.sort(key=lambda x: x[0])
@@ -201,13 +198,14 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
         frames = [image_data[i + j][1] for j in range(4)]  # Get 4 consecutive frames
         combined_frame = torch.cat(frames, dim=0)  # Concatenate along channel axis
         images.append(combined_frame)
-        labels.append(image_data[i][2])  # Assuming the first frame's action label applies to all 4
+        labels.append(
+            image_data[i][2]
+        )  # Assuming the first frame's action label applies to all 4
 
     # Stack all images into a single tensor
     images = torch.stack(images)  # shape: [batch_size, 4, 84, 84]
 
     return images, labels
-
 
 
 def get_actions_list():
