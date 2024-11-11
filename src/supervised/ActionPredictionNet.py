@@ -13,7 +13,7 @@ from src.utils import get_unique_filename
 action_to_index = {
     tuple(sorted(action)): i for i, action in enumerate(COMPLEX_MOVEMENT)
 }
-index_to_action = {idx: action for idx, action in enumerate(COMPLEX_MOVEMENT)}
+index_to_action = dict(enumerate(COMPLEX_MOVEMENT))
 
 
 class FrameSequenceDataset(Dataset):
