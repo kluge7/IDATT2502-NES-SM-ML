@@ -253,7 +253,10 @@ class PPOAgent:
         return np.mean(loss)
 
     def train(
-        self, max_timesteps, model_actor="ppo_actor_dynamic_lr.pth", model_critic="ppo_critic_dynamic_lr.pth"
+        self,
+        max_timesteps,
+        model_actor="ppo_actor_dynamic_lr.pth",
+        model_critic="ppo_critic_dynamic_lr.pth",
     ):
         os.makedirs(self.options.model_path, exist_ok=True)
         os.makedirs(self.options.training_result_path, exist_ok=True)
