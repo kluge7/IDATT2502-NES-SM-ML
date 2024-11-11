@@ -77,9 +77,11 @@ class ActionPredictionModel:
         torch.save(self.model.state_dict(), save_path)
 
     def train(self, train_loader, epochs=10):
-        training_result_path = "src/supervised/training_results/onehot"
-        os.makedirs("src/supervised/model/onehot/", exist_ok=True)
-        os.makedirs("src/supervised/model/checkpoints/onehot/", exist_ok=True)
+        training_result_path = "src/supervised/training_results/action-prediction"
+        os.makedirs("src/supervised/model/action-prediction/", exist_ok=True)
+        os.makedirs(
+            "src/supervised/model/action-prediction/checkpoints/", exist_ok=True
+        )
         os.makedirs(training_result_path, exist_ok=True)
 
         # CSV file to log the training results
@@ -105,10 +107,12 @@ class ActionPredictionModel:
 
                 average_epoch_loss = epoch_loss / len(train_loader)
 
-                self.save_model("src/supervised/model/onehot/ActionPredictionModel.pth")
+                self.save_model(
+                    "src/supervised/model/action-prediction/ActionPredictionModel.pth"
+                )
 
                 if epoch % 100 == 0:
-                    save_path = f"src/supervised/model/onehot/checkpoints/ActionPredictionModel-epoch{epoch}.pth"
+                    save_path = f"src/supervised/model/action-prediction/checkpoints/ActionPredictionModel-epoch{epoch}.pth"
                     self.save_model(save_path)
 
                 writer.writerow([epoch + 1, average_epoch_loss])
