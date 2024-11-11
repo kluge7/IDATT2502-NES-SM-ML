@@ -8,12 +8,12 @@ EPSILON_START = 0.1
 EPSILON_END = 0.1
 EPSILON_DECAY = 100000
 MODEL_SAVE_PATH = "model/ddqn_model.pth"
-CSV_FILENAME = "training_results/training_log_supervised.csv"
+CSV_FILENAME = "training_results/training_log.csv"
 # play_trained_agent.py
 RUNS = 50
 DELAY = 0.05
 # plot_training_results.py
-MOVING_AVERAGE_WINDOW = 200
+MOVING_AVERAGE_WINDOW = 500
 # train.py
 NUM_EPISODES = 20000
 SAVE_EVERY = 100
