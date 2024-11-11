@@ -25,11 +25,6 @@ def get_paths():
     return path_list
 
 
-paths = get_paths()
-for path in paths:
-    print(path)
-
-
 data_folder_min = os.path.join(
     py_dir, "../data-smb-1-1/Rafael_dp2a9j4i_e0_1-1_win"
 )  # path to info.txt
@@ -185,6 +180,7 @@ import torch
 
 
 def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
+    paths = get_paths()
     complex_movement_set = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
     image_data = []
 
@@ -215,8 +211,6 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
 
             if action_tuple in complex_movement_set:
                 image_data.append((frame_number, img_tensor, action_list))
-            else:
-                print(f"action: {action_tuple}, image_number: {frame_number}")
 
     # Sort by frame number for sequential order
     image_data.sort(key=lambda x: x[0])
@@ -239,6 +233,7 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
 
 
 def load_dataset_without_get_action() -> tuple[torch.Tensor, list]:
+    paths = get_paths()
     images = []
     labels = []
 
