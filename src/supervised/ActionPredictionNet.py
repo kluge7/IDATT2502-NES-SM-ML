@@ -18,32 +18,28 @@ index_to_action = {idx: action for idx, action in enumerate(COMPLEX_MOVEMENT)}
 
 class FrameSequenceDataset(Dataset):
     def __init__(self, images, labels):
-        self.images = images  # shape: [1998, 4, 84, 84]
+        self.images = images
         self.labels = labels
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        image = self.images[idx]  # shape: [4, 84, 84]
+        image = self.images[idx]
         label = self.labels[idx]
         return image, label
 
 
 class ActionPredictionNet(nn.Module):
-    def __init__(
-        self, input_channels: int, action_size: int
-    ):  # Correct the init method        super(ActionPredictionNet, self).__init__()
-        super().__init__()  # Initialize the parent class before defining layers
+    def __init__(self, input_channels: int, action_size: int):
+        super().__init__()
         print(input)
         self.features = nn.Sequential(
-            nn.Conv2d(
-                input_channels, 32, kernel_size=8, stride=4
-            ),  # Output: (32, 20, 20)
+            nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),  # Output: (64, 9, 9)
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),  # Output: (64, 7, 7)
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(),
         )
         self.fc = nn.Sequential(
