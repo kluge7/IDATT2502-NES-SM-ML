@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from cnn_network import CNNNetwork
+from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 from ppo_hyperparameters import PPOHyperparameters
 from torch import nn, optim
 from torch.distributions import Categorical
@@ -503,27 +504,23 @@ class PPOAgent:
             str(os.path.join(self.options.model_path, self.options.model_critic)),
         )
 
-    def load_networks(self):
+    def load_networks(self, actor_path=None, critic_path=None):
         """Loads the actor and critic network weights from the specified paths."""
         try:
-            self.actor.load_state_dict(
-                torch.load(
-                    str(os.path.join(self.options.model_path, self.options.model_actor))
+            if actor_path is None:
+                actor_path = os.path.join(
+                    self.options.model_path, self.options.model_actor
                 )
-            )
-            self.critic.load_state_dict(
-                torch.load(
-                    str(
-                        os.path.join(self.options.model_path, self.options.model_critic)
-                    )
+            if critic_path is None:
+                critic_path = os.path.join(
+                    self.options.model_path, self.options.model_critic
                 )
-            )
+
+            self.actor.load_state_dict(torch.load(actor_path))
+            self.critic.load_state_dict(torch.load(critic_path))
         except FileNotFoundError:
             print(
-                f"Error: Could not find model files at "
-                f"{str(os.path.join(self.options.model_path, self.options.model_actor))} or "
-                f"{str(os.path.join(self.options.model_path, self.options.model_critic))}. "
-                f"Starting training from scratch..."
+                f"Error: Could not find model files at {actor_path} or {critic_path}. Starting training from scratch..."
             )
 
 
@@ -538,13 +535,16 @@ def main():
     """
     world, stage, env_version = 1, 1, "v0"
     specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
-    env = create_env(map=specification, skip=4)
+    env = create_env(map=specification, skip=4, actions=COMPLEX_MOVEMENT)
 
     options = PPOHyperparameters(render=True, specification=specification)
 
     agent = PPOAgent(env, options)
+    agent.load_networks(
+        actor_path="model/ppo_actor60.pth", critic_path="model/ppo_critic60.pth"
+    )
 
-    total_timesteps = 3_000_000
+    total_timesteps = 3_000_000 * 0.4 * 0.3
     agent.train(max_timesteps=total_timesteps)
 
 
