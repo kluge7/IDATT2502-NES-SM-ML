@@ -162,21 +162,11 @@ def get_action_from_bit(actions: list) -> list:
     return action_keys
 
 
-# def load_dataset() -> tuple[torch.Tensor, list]:
-# images = []
-# labels = []
-
-
 def extract_frame_number(filename):
     match = re.search(r"f(\d+)", filename)
     if match:
         return int(match.group(1))
     return 0  # Return 0 if no frame number is found
-
-
-import os
-
-import torch
 
 
 def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
