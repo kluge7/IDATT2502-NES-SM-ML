@@ -1,9 +1,19 @@
+import re
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
 
-from src.supervised.utils.dataset_utils import load_dataset, preprocess_frame
+from src.supervised.utils.dataset_utils import (
+    get_paths,
+    load_dataset_without_get_action,
+)
 
+# Mapping of action integers to SIMPLE_MOVEMENT indices
 action_map = {
     0: 0,  # NOOP
     4: 1,  # right
@@ -12,29 +22,46 @@ action_map = {
     148: 4,  # right + A + B
     128: 5,  # A
     8: 6,  # left
-    136: 7,  # left + A
-    24: 8,  # left + B
-    152: 9,  # left + A + B
-    2: 10,  # down
 }
 
 
-def decode_action(action_int):
-    actions = {
-        128: "A",
-        64: "up",
-        32: "left",
-        16: "B",
-        8: "start",
-        4: "right",
-        2: "down",
-        1: "select",
-    }
-    active_actions = []
-    for bit_value, action_name in actions.items():
-        if action_int & bit_value:
-            active_actions.append(action_name)
-    return active_actions
+# Function to parse action from filename
+def parse_filename_to_action(filename: str) -> int:
+    match = re.search(r"_a(\d+)", filename)
+    if match:
+        action = int(match.group(1))
+        return action
+    else:
+        raise ValueError("Action not found in the filename")
+
+
+# Function to load dataset
+
+
+# Get subfolder paths
+subfolder_paths = get_paths()
+
+# Load dataset
+images, labels = load_dataset_without_get_action()
+
+labels = torch.tensor(labels, dtype=torch.long)
+
+
+# Custom Dataset class
+class MarioDataset(Dataset):
+    def __init__(self, images, actions):
+        self.images = images
+        self.actions = actions
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        action = self.actions[idx]
+        return torch.tensor(image, dtype=torch.float32), torch.tensor(
+            action, dtype=torch.long
+        )
 
 
 class MarioCNN(nn.Module):
@@ -58,42 +85,14 @@ class MarioCNN(nn.Module):
 num_classes = 256  # Total number of possible actions (0-255)
 model = MarioCNN(num_classes)
 
-
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-
-
-class MarioDataset(Dataset):
-    def __init__(self, images, actions):
-        self.images = images
-        self.actions = actions
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        image = self.images[idx]
-        action = self.actions[idx]
-        return torch.tensor(image, dtype=torch.float32), torch.tensor(
-            action, dtype=torch.long
-        )
-
-
-images, labels = load_dataset()
-
-
-labels = torch.tensor(labels)
-
-
 dataset = MarioDataset(images, labels)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-
+dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 # Training loop
-for epoch in range(3):
+for epoch in range(100):
     running_loss = 0.0
     for images, actions in dataloader:
         optimizer.zero_grad()
@@ -103,6 +102,9 @@ for epoch in range(3):
         optimizer.step()
         running_loss += loss.item()
     print(f"Epoch {epoch + 1}, Loss: {running_loss / len(dataloader)}")
+    torch.save(model.state_dict(), "mario_cnn_model_final.pth")
+
+# Save the model after training
 
 
 torch.save(model.state_dict(), "mario_cnn_model_final.pth")
@@ -115,9 +117,23 @@ from nes_py.wrappers import JoypadSpace
 env = gym.make("SuperMarioBros-v0")
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-model = MarioCNN(num_classes)
-# model.load_state_dict(torch.load("mario_cnn_model_final.pth", weights_only=True))
+model.load_state_dict(torch.load("mario_cnn_model_final.pth"))
 model.eval()
+
+
+def preprocess_frame(frame):
+    frame = Image.fromarray(frame)
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((240, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
+    frame = transform(frame)
+    frame = frame.unsqueeze(0)
+    return frame
 
 
 state = env.reset()
@@ -132,10 +148,8 @@ while not done:
         action_prob = model(state_preprocessed)
         predicted_action = torch.argmax(action_prob).item()
 
-    decoded_actions = decode_action(predicted_action)
-    print(f"Predicted action {predicted_action} corresponds to: {decoded_actions}")
-
-    action = action_map.get(predicted_action)
+    action = action_map.get(predicted_action, 0)
+    print(predicted_action)
 
     state, reward, done, info = env.step(action)
 
