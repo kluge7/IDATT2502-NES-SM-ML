@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from cnn_network import CNNNetwork
+from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 from ppo_hyperparameters import PPOHyperparameters
 from torch import nn, optim
 from torch.distributions import Categorical
@@ -16,6 +17,19 @@ from src.utils import get_unique_filename
 
 class PPOAgent:
     def __init__(self, env, options: PPOHyperparameters):
+        """Initializes the PPO agent with actor and critic networks and hyperparameters.
+
+        Args:
+            env (gym.Env): The environment in which the agent will operate.
+            options (PPOHyperparameters): Contains hyperparameters for training and evaluation.
+
+        Attributes:
+            actor (CNNNetwork): The neural network representing the policy (actor).
+            critic (CNNNetwork): The neural network representing the value function (critic).
+            actor_optimizer (torch.optim.Optimizer): Optimizer for the actor network.
+            critic_optimizer (torch.optim.Optimizer): Optimizer for the critic network.
+            device (torch.device): Device to run computations on (GPU if available, else CPU).
+        """
         self.env = env
         self.options = options
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,6 +46,15 @@ class PPOAgent:
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=options.lr)
 
     def select_action(self, observation):
+        """Selects an action and log probability based on the current policy.
+
+        Args:
+            observation (np.array): The current state observation from the environment.
+
+        Returns:
+            selected_action (int): The chosen action index.
+            log_probability (torch.Tensor): The log probability of the chosen action.
+        """
         observation = torch.tensor(observation, dtype=torch.float).to(self.device)
         action_logits = self.actor(observation.unsqueeze(0).to(self.device))
         action_probabilities = F.softmax(action_logits, dim=-1)[0]
@@ -43,6 +66,18 @@ class PPOAgent:
         return selected_action.item(), log_probability.detach().to(self.device)
 
     def calculate_gae(self, episode_rewards, episode_values, episode_dones):
+        """Calculates the Generalized Advantage Estimation (GAE) for each step.
+
+        Recursive formula: Aₜ = δₜ + γ * λ * (1 - doneₜ) * Aₜ₊₁
+
+        Args:
+            episode_rewards (list of list): List of rewards for each episode.
+            episode_values (list of list): List of value estimates from the critic for each episode.
+            episode_dones (list of list): List of booleans indicating episode termination.
+
+        Returns:
+            batch_advantages (torch.Tensor): Calculated advantages for each step in the batch.
+        """
         batch_advantages = []
 
         for rewards, values, dones in zip(
@@ -53,6 +88,8 @@ class PPOAgent:
 
             for step in reversed(range(len(rewards))):
                 if step + 1 < len(rewards):
+                    # The temporal difference error δₜ (delta)
+                    # δₜ = rₜ + γ * V(sₜ₊₁) * (1 - doneₜ) - V(sₜ)
                     delta = (
                         rewards[step]
                         + self.options.gamma * values[step + 1] * (1 - dones[step])
@@ -61,7 +98,8 @@ class PPOAgent:
                 else:
                     delta = rewards[step] - values[step]
 
-                # Calculate the GAE advantage
+                # The Aₜ (Generalized Advantage Estimation (GAE))
+                # Aₜ = δₜ + γ * λ * (1 - doneₜ) * Aₜ₊₁
                 advantage = (
                     delta
                     + self.options.gamma
@@ -78,6 +116,27 @@ class PPOAgent:
         return torch.tensor(batch_advantages, dtype=torch.float32).to(self.device)
 
     def evaluate(self, batch_observations, batch_actions):
+        r"""Evaluates value estimates V(s) and action log probabilities for a batch.
+
+        Given a state s, the value function V(s) is defined as:\n
+        V(s) = E[Σₖ₌₀ⁿ (γᵏ * rₜ₊ₖ | sₜ = s)]\n
+        where:\n
+        - V(s) is the expected return from state s\n
+        - γ is the discount factor (0 < γ < 1)\n
+        - rₜ₊ₖ is the reward received k steps into the future\n
+        - The critic network approximates V(s) based on this expectation.\n
+
+        Args:
+            batch_observations (torch.Tensor): Batch of observations.
+            batch_actions (torch.Tensor): Batch of actions taken.
+
+        Returns:
+            v (torch.Tensor): Value estimates for each observation.
+            log_action_probabilities (torch.Tensor): Log probabilities of actions.
+            entropy (torch.Tensor): Entropy of the action distribution for exploration regularization.
+        """
+        # Approximate V(s)
+        # v[i] = V(s[i]) ≈ critic_network(s[i])
         v = self.critic(batch_observations).squeeze()
 
         batch_observations = torch.tensor(batch_observations, dtype=torch.float).to(
@@ -93,6 +152,15 @@ class PPOAgent:
         return v, log_action_probabilities, action_distribution.entropy()
 
     def rollout(self, episode_output_file):
+        """Collects data for a batch by running episodes in the environment.
+
+        Args:
+            episode_output_file (str): Path to save episode results in CSV format.
+
+        Returns:
+            tuple: Contains observations, actions, log probabilities, rewards, lengths, values,
+                   dones, and flag count for the batch.
+        """
         gc.collect()
 
         batch_observations = []
@@ -115,7 +183,8 @@ class PPOAgent:
             done = False
             flag = False
 
-            def collect_batch(episode_rewards, episode_values, episode_dones):
+            def collect_data(episode_rewards, episode_values, episode_dones):
+                """Collects observations, actions, values, rewards, and dones for a batch."""
                 nonlocal observations, done, flag, timestep
 
                 if self.options.render:
@@ -142,7 +211,7 @@ class PPOAgent:
 
             # Run the main episode loop
             for _episode_step in range(self.options.max_timesteps_per_episode):
-                collect_batch(episode_rewards, episode_values, episode_dones)
+                collect_data(episode_rewards, episode_values, episode_dones)
                 if done:
                     break
 
@@ -152,7 +221,7 @@ class PPOAgent:
                 >= self.options.timesteps_per_batch
             ) and not done:
                 while not done:
-                    collect_batch(episode_rewards, episode_values, episode_dones)
+                    collect_data(episode_rewards, episode_values, episode_dones)
 
             batch_lengths.append(_episode_step + 1)
             batch_rewards.append(episode_rewards)
@@ -201,6 +270,33 @@ class PPOAgent:
         timestep,
         max_timesteps,
     ):
+        r"""Updates the actor and critic networks using PPO by using clipped surrogate objective for the actor and Mean Squared Error (MSE) for the critic.
+
+        PPO policy update:\n
+        Lₜ_clip = E[min(rₜ(θ) * Aₜ, clip(rₜ(θ), 1 - ε, 1 + ε) * Aₜ)]\n
+        where:\n
+        - rₜ(θ) is the policy ratio: rₜ(θ) = π_θ(aₜ | sₜ) / π_θ₋₁(aₜ | sₜ)\n
+        - Aₜ is the advantage estimate for each state-action pair\n
+        - ε is a clipping parameter to prevent large policy updates.\n
+
+        Critic value update:\n
+        critic_loss = MSE(v, Rₜ)\n
+        where:
+        - v is the predicted value for each state, V(s)\n
+        - Rₜ is the target return for each state-action pair.\n
+
+        Args:
+            batch_observations (torch.Tensor): Batch of observations.
+            batch_actions (torch.Tensor): Batch of actions taken.
+            batch_log_probabilities (torch.Tensor): Log probabilities from the previous policy.
+            batch_rtgs (torch.Tensor): Target returns for each state-action pair.
+            advantages (torch.Tensor): Computed advantages for each state-action pair.
+            timestep (int): Current timestep in the training loop.
+            max_timesteps (int): Maximum number of timesteps to train.
+
+        Returns:
+            float: Average actor loss and critic loss for the update.
+        """
         step = batch_observations.size(0)
         indices = np.arange(step)
         minibatch_size = step // self.options.num_minibatches
@@ -231,21 +327,38 @@ class PPOAgent:
                     mini_observations, mini_actions
                 )
 
+                # Policy ratio: rₜ(θ) = exp(log_pi - log_pi_old)
                 ratios = torch.exp(current_log_probabilities - mini_log_probabilities)
-                kl = (
-                    (ratios - 1) ** (current_log_probabilities - mini_log_probabilities)
-                ).mean()
 
+                # KL (Kullback-Leibler divergence) measures the difference between the old and new policies
+                # KL = E[log(π_old(aₜ | sₜ) / π_new(aₜ | sₜ))]
+                kl = (mini_log_probabilities - current_log_probabilities).mean()
+                # Alternatively:
+                # kl = (
+                #     (ratios - 1) ** (current_log_probabilities - mini_log_probabilities)
+                # ).mean()
+
+                # Clipped Surrogate Objective terms:
+                # surr1 = rₜ(θ) * Aₜ
                 surr1 = ratios * mini_advantages
+
+                # surr2 = clip(rₜ(θ), 1 - ε, 1 + ε) * Aₜ
                 surr2 = (
                     torch.clamp(ratios, 1 - self.options.clip, 1 + self.options.clip)
                     * mini_advantages
                 )
+
+                # Actor loss with entropy regularization:
+                # actor_loss = -mean(min(surr1, surr2)) - entropy_coef * entropy
                 actor_loss = (
                     -torch.min(surr1, surr2)
                 ).mean() - self.options.ent_coef * entropy.mean()
+
+                # Critic loss (Mean Squared Error):
+                # critic_loss = MSE(v, Rₜ)
                 critic_loss = nn.MSELoss()(v, mini_rtgs)
 
+                # Perform backpropagation and optimization step for the actor network
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward(retain_graph=True)
                 nn.utils.clip_grad_norm_(
@@ -253,6 +366,7 @@ class PPOAgent:
                 )
                 self.actor_optimizer.step()
 
+                # Perform backpropagation and optimization step for the critic network
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
                 nn.utils.clip_grad_norm_(
@@ -263,12 +377,17 @@ class PPOAgent:
                 actor_losses.append(actor_loss.detach())
                 critic_losses.append(critic_loss.detach())
 
-            if kl > self.options.target_kl:
+            if self.options.kl_divergence and kl > self.options.target_kl:
                 break
 
         return np.mean(actor_losses), np.mean(critic_losses)
 
     def train(self, max_timesteps):
+        """Trains the agent in the environment using PPO.
+
+        Args:
+            max_timesteps (int): Total number of timesteps for training.
+        """
         # tensorboard_writer = SummaryWriter(log_dir=self.options.tensorboard_log_dir)
 
         os.makedirs(self.options.model_path, exist_ok=True)
@@ -324,9 +443,13 @@ class PPOAgent:
             timestep += np.sum(batch_lengths)
             iteration += 1
 
+            # Advantages for each time step using Generalized Advantage Estimation (GAE)
             advantages = self.calculate_gae(batch_rewards, batch_values, batch_dones)
+            # Value estimates for each observation in the batch using the critic network
             v = self.critic(batch_observations).squeeze()
+            # Target returns for the critic by adding advantages to the detached value estimates
             batch_rtgs = advantages + v.detach()
+            # Normalize advantages to stabilize training updates
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
 
             average_actor_loss, average_critic_loss = self.update(
@@ -371,6 +494,7 @@ class PPOAgent:
         # tensorboard_writer.close()
 
     def save_networks(self):
+        """Saves the actor and critic network weights to the specified paths."""
         torch.save(
             self.actor.state_dict(),
             str(os.path.join(self.options.model_path, self.options.model_actor)),
@@ -380,37 +504,43 @@ class PPOAgent:
             str(os.path.join(self.options.model_path, self.options.model_critic)),
         )
 
-    def load_networks(self):
+    def load_networks(self, actor_path=None, critic_path=None):
+        """Loads the actor and critic network weights from the specified paths."""
         try:
-            self.actor.load_state_dict(
-                torch.load(
-                    str(os.path.join(self.options.model_path, self.options.model_actor))
+            if actor_path is None:
+                actor_path = os.path.join(
+                    self.options.model_path, self.options.model_actor
                 )
-            )
-            self.critic.load_state_dict(
-                torch.load(
-                    str(
-                        os.path.join(self.options.model_path, self.options.model_critic)
-                    )
+            if critic_path is None:
+                critic_path = os.path.join(
+                    self.options.model_path, self.options.model_critic
                 )
-            )
+
+            self.actor.load_state_dict(torch.load(actor_path))
+            self.critic.load_state_dict(torch.load(critic_path))
         except FileNotFoundError:
             print(
-                f"Error: Could not find model files at "
-                f"{str(os.path.join(self.options.model_path, self.options.model_actor))} or "
-                f"{str(os.path.join(self.options.model_path, self.options.model_critic))}. "
-                f"Starting training from scratch..."
+                f"Error: Could not find model files at {actor_path} or {critic_path}. Starting training from scratch..."
             )
 
 
 def main():
+    """Sets up the environment and agent, then trains the agent.
+
+    Environment:
+        Super Mario Bros environment is created using the `create_env` function.
+
+    Agent:
+        PPO agent is created and trained for a specified number of timesteps.
+    """
     world, stage, env_version = 1, 1, "v0"
     specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
-    env = create_env(map=specification, skip=4)
+    env = create_env(map=specification, skip=4, actions=COMPLEX_MOVEMENT)
 
     options = PPOHyperparameters(render=True, specification=specification)
 
     agent = PPOAgent(env, options)
+    agent.load_networks(actor_path="src/ppo/model/ActionPredictionModel.pth")
 
     total_timesteps = 3_000_000
     agent.train(max_timesteps=total_timesteps)

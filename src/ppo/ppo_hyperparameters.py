@@ -1,4 +1,36 @@
 class PPOHyperparameters:
+    """Defines hyperparameters for training a Proximal Policy Optimization (PPO) agent.
+
+    Attributes:
+        timesteps_per_batch (int): Number of timesteps collected in each batch for training.
+        max_timesteps_per_episode (int): Maximum timesteps allowed per episode.
+
+        gamma (float): Discount factor for future rewards, controlling the importance of long-term vs. immediate rewards.
+        n_updates_per_iteration (int): Number of PPO update iterations per batch of collected data.
+        clip (float): Clipping parameter to limit policy updates, stabilizing training by preventing large policy changes.
+        lr (float): Learning rate for optimizers (actor and critic).
+        dynamic_lr (bool): Flag to enable dynamic learning rate adjustment during training.
+        min_lr_limit (float): Minimum limit for learning rate when `dynamic_lr` is enabled.
+        num_minibatches (int): Number of mini-batches used to split each batch of data for PPO updates.
+        lam (float): Lambda parameter for Generalized Advantage Estimation (GAE), controlling bias-variance tradeoff.
+        ent_coef (float): Entropy coefficient to encourage exploration by adding entropy to the policy loss.
+        max_grad_norm (float): Maximum value for gradient clipping to stabilize training by limiting gradient magnitude.
+        kl_divergence (bool): Flag to enable Kullback-Leibler (KL) divergence checking for early stopping.
+        target_kl (float): Target KL divergence to stop updates early if policy changes too much.
+
+        save_freq (int): Frequency (in iterations) for saving model checkpoints.
+        render (bool): Flag to render the environment during training for visualization.
+
+        tensorboard_log_dir (str): Directory path to save TensorBoard logs for training visualization.
+        specification (str): Environment specification (default set for Super Mario Bros environment).
+        model_actor (str): Filename for saving the actor model checkpoint.
+        model_critic (str): Filename for saving the critic model checkpoint.
+        model_path (str): Directory path to save model checkpoints.
+        training_result_path (str): Directory path to save training results (e.g., CSV files).
+        episode_result_path (str): Directory path to save episode-level results (e.g., CSV files).
+
+    """
+
     def __init__(
         self,
         timesteps_per_batch=2000,
@@ -14,6 +46,7 @@ class PPOHyperparameters:
         lam=0.98,
         ent_coef=0.01,
         max_grad_norm=0.5,
+        kl_divergence=True,
         target_kl=0.02,
         save_frequency=1,
         render=False,
@@ -39,6 +72,7 @@ class PPOHyperparameters:
         self.lam = lam
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
+        self.kl_divergence = kl_divergence
         self.target_kl = target_kl
 
         self.save_freq = save_frequency
