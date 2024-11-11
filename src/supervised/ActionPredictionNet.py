@@ -69,8 +69,7 @@ class ActionPredictionModel:
         self, input_channels: int = 3, action_size: int = len(action_to_index)
     ):
         self.model = ActionPredictionNet(input_channels, action_size)
-        # self.device = self.model.device
-        self.criterion = nn.CrossEntropyLoss()  # For single-class classification
+        self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
 
     def save_model(self, save_path):
@@ -78,7 +77,6 @@ class ActionPredictionModel:
         torch.save(self.model.state_dict(), save_path)
 
     def train(self, train_loader, epochs=10):
-        # Directories for saving the model and results
         training_result_path = "src/supervised/training_results/onehot"
         os.makedirs("src/supervised/model/onehot/", exist_ok=True)
         os.makedirs("src/supervised/model/checkpoints/onehot/", exist_ok=True)
@@ -98,37 +96,21 @@ class ActionPredictionModel:
             for epoch in range(epochs):
                 epoch_loss = 0
                 for inputs, labels in train_loader:
-                    # inputs, labels = inputs.to(self.device), labels.to(self.device)
-
-                    # Zero the gradients from the previous step
                     self.optimizer.zero_grad()
-
-                    # Forward pass
                     outputs = self.model(inputs)
-                    print(outputs)
-
-                    # Compute the loss
                     loss = self.criterion(outputs, labels)
-
-                    # Backward pass and optimization step
                     loss.backward()
                     self.optimizer.step()
-
-                    # Track the loss for the epoch
                     epoch_loss += loss.item()
 
-                # Calculate average loss for the epoch
                 average_epoch_loss = epoch_loss / len(train_loader)
 
-                # Save model after each epoch
                 self.save_model("src/supervised/model/onehot/ActionPredictionModel.pth")
 
-                # Save checkpoint every 100 epochs
                 if epoch % 100 == 0:
                     save_path = f"src/supervised/model/onehot/checkpoints/ActionPredictionModel-epoch{epoch}.pth"
                     self.save_model(save_path)
 
-                # Write the epoch and loss to the CSV file
                 writer.writerow([epoch + 1, average_epoch_loss])
                 file.flush()
                 print(f"Epoch {epoch + 1}/{epochs}, Loss: {average_epoch_loss:.4f}")
