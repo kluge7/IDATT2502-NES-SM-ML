@@ -12,16 +12,19 @@ from src.supervised.utils import dataset_utils
 class MultiLabelNet(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm2d(64)
-        self.fc1 = nn.Linear(64 * 60 * 64, 128)
+        self.fc1 = nn.Linear(64 * 60 * 64, 512)
         self.dropout = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(128, num_classes)
+        self.fc2 = nn.Linear(512, num_classes)
+        self.to(self.device)
 
     def forward(self, x):
+        x = x.to(self.device)
         x = self.pool(F.relu(self.bn1(self.conv1(x))))
         x = self.pool(F.relu(self.bn2(self.conv2(x))))
         x = x.view(x.size(0), -1)
@@ -32,21 +35,24 @@ class MultiLabelNet(nn.Module):
 class MultiLabelModel:
     def __init__(self, num_classes):
         self.model = MultiLabelNet(num_classes)
+        self.device = self.model.device
         self.criterion = nn.BCEWithLogitsLoss()  # Combines Sigmoid and BCELoss
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
 
     def train(self, train_loader, epochs=10):
         self.model.train()
         for epoch in range(epochs):
             epoch_loss = 0
             for inputs, labels in train_loader:
+                print(inputs)
+                inputs, labels = inputs.to(self.device), labels.to(self.device)
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, labels)
                 loss.backward()
                 self.optimizer.step()
                 epoch_loss += loss.item()
-            print(f"Epoch: {epoch}, Loss: {epoch_loss}")
+            print(f"Epoch: {epoch}, Loss: {epoch_loss:.3f}")
 
     def evaluate(self, test_loader):
         self.model.eval()
@@ -56,13 +62,14 @@ class MultiLabelModel:
 
         with torch.no_grad():
             for inputs, labels in test_loader:
+                inputs, labels = inputs.to(self.device), labels.to(self.device)
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, labels)
                 total_loss += loss.item()
 
                 # Accumulate predictions and true labels for metric calculation
-                all_outputs.append(outputs)
-                all_labels.append(labels)
+                all_outputs.append(outputs.cpu())
+                all_labels.append(labels.cpu())
 
         # Convert outputs and labels to tensors
         outputs = torch.cat(all_outputs)
@@ -102,14 +109,14 @@ y_train_tensor = torch.tensor(encoded_labels_train, dtype=torch.float32)
 y_test_tensor = torch.tensor(encoded_labels_test, dtype=torch.float32)
 
 train_loader = DataLoader(
-    TensorDataset(images_train, y_train_tensor), batch_size=16, shuffle=True
+    TensorDataset(images_train, y_train_tensor), batch_size=32, shuffle=True
 )
 test_loader = DataLoader(
-    TensorDataset(images_test, y_test_tensor), batch_size=16, shuffle=False
+    TensorDataset(images_test, y_test_tensor), batch_size=32, shuffle=True
 )
 
 model = MultiLabelModel(num_classes)
-
-model.train(train_loader, epochs=50)
+print(input_size)
+model.train(train_loader, epochs=1_000)
 
 model.evaluate(test_loader)
