@@ -41,27 +41,31 @@ repos:
         name: ruff-isort
         args: [
             "--select=I",
-            "--fix"
+            "--fix",
+            "--unsafe-fixes"
             ]
       - id: ruff
         name: ruff-pyupgrade
         args: [
             "--select=UP",
-            "--fix"
+            "--fix",
+            "--unsafe-fixes"
             ]
       - id: ruff
         name: ruff-pydocstyle
         args: [
             "--select=D",
             "--ignore=D100,D101,D102,D103,D104,D105,D106,D107,D401",
-            "--fix"
+            "--fix",
+            "--unsafe-fixes"
             ]
       - id: ruff
         name: ruff-check
         args: [
             "--select=F,PT,B,C4,T20,S,N",
             "--ignore=T201,N812,S311",
-            "--fix"
+            "--fix",
+            "--unsafe-fixes"
             ]
   # Spellcheck in comments and docs
   - repo: https://github.com/codespell-project/codespell
