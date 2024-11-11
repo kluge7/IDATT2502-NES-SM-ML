@@ -540,9 +540,7 @@ def main():
     options = PPOHyperparameters(render=True, specification=specification)
 
     agent = PPOAgent(env, options)
-    agent.load_networks(
-        actor_path="model/ppo_actor60.pth", critic_path="model/ppo_critic60.pth"
-    )
+    agent.load_networks(actor_path="src/ppo/model/ActionPredictionModel.pth")
 
     total_timesteps = 3_000_000 * 0.4 * 0.3
     agent.train(max_timesteps=total_timesteps)
