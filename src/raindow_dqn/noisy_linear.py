@@ -1,7 +1,8 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 
 class NoisyLinear(nn.Module):
     """Noisy linear layer for NoisyNet."""
@@ -13,11 +14,11 @@ class NoisyLinear(nn.Module):
 
         self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
         self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
-        self.register_buffer('weight_epsilon', torch.zeros(out_features, in_features))
+        self.register_buffer("weight_epsilon", torch.zeros(out_features, in_features))
 
         self.bias_mu = nn.Parameter(torch.empty(out_features))
         self.bias_sigma = nn.Parameter(torch.empty(out_features))
-        self.register_buffer('bias_epsilon', torch.zeros(out_features))
+        self.register_buffer("bias_epsilon", torch.zeros(out_features))
 
         self.sigma_init = sigma_init
         self.reset_parameters()

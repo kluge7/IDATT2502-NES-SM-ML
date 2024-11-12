@@ -1,14 +1,13 @@
-import math
-import random
-import os
 import csv  # Added for CSV functionality
+import math
+import os
+
+import gym_super_mario_bros
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-
-import gym_super_mario_bros
+import torch.optim as optim
 from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 from nes_py.wrappers import JoypadSpace
 
@@ -21,6 +20,7 @@ from src.environment.wrappers import (
     ObservationBuffer,
     ResizeAndGrayscale,
 )
+
 
 # Define your environment setup
 def create_env(map="SuperMarioBros-v0", skip=4, output_path=None):
@@ -38,6 +38,7 @@ def create_env(map="SuperMarioBros-v0", skip=4, output_path=None):
     env = NormalizePixels(env)
     return env
 
+
 # Implement NoisyLinear layer for Noisy Nets
 class NoisyLinear(nn.Module):
     def __init__(self, in_features, out_features, sigma_init=0.017):
@@ -47,11 +48,13 @@ class NoisyLinear(nn.Module):
 
         self.weight_mu = nn.Parameter(torch.FloatTensor(out_features, in_features))
         self.weight_sigma = nn.Parameter(torch.FloatTensor(out_features, in_features))
-        self.register_buffer('weight_epsilon', torch.FloatTensor(out_features, in_features))
+        self.register_buffer(
+            "weight_epsilon", torch.FloatTensor(out_features, in_features)
+        )
 
         self.bias_mu = nn.Parameter(torch.FloatTensor(out_features))
         self.bias_sigma = nn.Parameter(torch.FloatTensor(out_features))
-        self.register_buffer('bias_epsilon', torch.FloatTensor(out_features))
+        self.register_buffer("bias_epsilon", torch.FloatTensor(out_features))
 
         self.sigma_init = sigma_init
         self.reset_parameters()
@@ -79,9 +82,17 @@ class NoisyLinear(nn.Module):
 
         return F.linear(input, weight, bias)
 
+
 # Define the Rainbow DQN network
 class RainbowDQN(nn.Module):
-    def __init__(self, input_channels: int, num_actions: int, num_atoms: int = 51, Vmin: float = -10, Vmax: float = 10):
+    def __init__(
+        self,
+        input_channels: int,
+        num_actions: int,
+        num_atoms: int = 51,
+        Vmin: float = -10,
+        Vmax: float = 10,
+    ):
         super(RainbowDQN, self).__init__()
 
         self.num_actions = num_actions
@@ -91,7 +102,9 @@ class RainbowDQN(nn.Module):
         self.support = torch.linspace(self.Vmin, self.Vmax, self.num_atoms)
 
         self.features = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),  # Output: (32, 20, 20)
+            nn.Conv2d(
+                input_channels, 32, kernel_size=8, stride=4
+            ),  # Output: (32, 20, 20)
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),  # Output: (64, 9, 9)
             nn.ReLU(),
@@ -135,6 +148,7 @@ class RainbowDQN(nn.Module):
         self.noisy_advantage1.reset_noise()
         self.noisy_advantage2.reset_noise()
 
+
 # Implement Prioritized Replay Buffer
 class PrioritizedReplayBuffer:
     def __init__(self, capacity, alpha):
@@ -152,14 +166,14 @@ class PrioritizedReplayBuffer:
         else:
             self.buffer[self.pos] = (state, action, reward, next_state, done)
 
-        self.priorities[self.pos] = max_prio ** self.alpha
+        self.priorities[self.pos] = max_prio**self.alpha
         self.pos = (self.pos + 1) % self.capacity
 
     def sample(self, batch_size, beta):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
-            prios = self.priorities[:self.pos]
+            prios = self.priorities[: self.pos]
 
         probs = prios / prios.sum()
         indices = np.random.choice(len(self.buffer), batch_size, p=probs)
@@ -181,13 +195,31 @@ class PrioritizedReplayBuffer:
 
     def update_priorities(self, batch_indices, batch_priorities):
         for idx, prio in zip(batch_indices, batch_priorities):
-            self.priorities[idx] = prio ** self.alpha
+            self.priorities[idx] = prio**self.alpha
+
 
 # Define the Agent class
 class Agent:
-    def __init__(self, env, input_channels, num_actions, device, Vmin=-10, Vmax=10, num_atoms=51, n_steps=3, gamma=0.99,
-                 batch_size=32, replay_capacity=100000, alpha=0.6, beta_start=0.4, beta_frames=100000, learning_rate=1e-4,
-                 target_update=1000, save_path='checkpoints'):
+    def __init__(
+        self,
+        env,
+        input_channels,
+        num_actions,
+        device,
+        Vmin=-10,
+        Vmax=10,
+        num_atoms=51,
+        n_steps=3,
+        gamma=0.99,
+        batch_size=32,
+        replay_capacity=100000,
+        alpha=0.6,
+        beta_start=0.4,
+        beta_frames=100000,
+        learning_rate=1e-4,
+        target_update=1000,
+        save_path="checkpoints",
+    ):
         self.env = env
         self.device = device
         self.num_actions = num_actions
@@ -203,8 +235,12 @@ class Agent:
         self.save_path = save_path
         os.makedirs(self.save_path, exist_ok=True)
 
-        self.policy_net = RainbowDQN(input_channels, num_actions, num_atoms=num_atoms, Vmin=Vmin, Vmax=Vmax).to(device)
-        self.target_net = RainbowDQN(input_channels, num_actions, num_atoms=num_atoms, Vmin=Vmin, Vmax=Vmax).to(device)
+        self.policy_net = RainbowDQN(
+            input_channels, num_actions, num_atoms=num_atoms, Vmin=Vmin, Vmax=Vmax
+        ).to(device)
+        self.target_net = RainbowDQN(
+            input_channels, num_actions, num_atoms=num_atoms, Vmin=Vmin, Vmax=Vmax
+        ).to(device)
         self.load_model()  # Load the latest model if available
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
@@ -223,11 +259,11 @@ class Agent:
         self.episode_counter = 0  # Initialize episode counter
 
         # Initialize CSV file
-        self.csv_file = os.path.join(self.save_path, 'training_log.csv')
+        self.csv_file = os.path.join(self.save_path, "training_log.csv")
         if not os.path.exists(self.csv_file):
-            with open(self.csv_file, 'w', newline='') as f:
+            with open(self.csv_file, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(['Reward', 'Got Flag'])
+                writer.writerow(["Reward", "Got Flag"])
 
     def select_action(self, state):
         with torch.no_grad():
@@ -241,7 +277,9 @@ class Agent:
         self.n_step_buffer.append((state, action, reward, next_state, done))
         if len(self.n_step_buffer) < self.n_steps:
             return
-        R = sum([self.n_step_buffer[i][2] * (self.gamma ** i) for i in range(self.n_steps)])
+        R = sum(
+            [self.n_step_buffer[i][2] * (self.gamma**i) for i in range(self.n_steps)]
+        )
         state_n, action_n = self.n_step_buffer[0][0], self.n_step_buffer[0][1]
         next_state_n = self.n_step_buffer[-1][3]
         done_n = self.n_step_buffer[-1][4]
@@ -259,7 +297,9 @@ class Agent:
 
         beta = self.update_beta(frame_idx)
 
-        states, actions, rewards, next_states, dones, indices, weights = self.replay_buffer.sample(self.batch_size, beta)
+        states, actions, rewards, next_states, dones, indices, weights = (
+            self.replay_buffer.sample(self.batch_size, beta)
+        )
 
         states = torch.FloatTensor(states).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
@@ -274,25 +314,38 @@ class Agent:
             next_actions = next_q_values.argmax(dim=1)
 
             next_q_atoms_target = self.target_net(next_states)
-            next_q_atoms_target = next_q_atoms_target[range(self.batch_size), next_actions]
+            next_q_atoms_target = next_q_atoms_target[
+                range(self.batch_size), next_actions
+            ]
 
-            Tz = rewards.unsqueeze(1) + (self.gamma ** self.n_steps) * self.support.unsqueeze(0) * (1 - dones.unsqueeze(1))
+            Tz = rewards.unsqueeze(1) + (
+                self.gamma**self.n_steps
+            ) * self.support.unsqueeze(0) * (1 - dones.unsqueeze(1))
             Tz = Tz.clamp(self.Vmin, self.Vmax)
             b = (Tz - self.Vmin) / self.delta_z
             l = b.floor().long()
             u = b.ceil().long()
 
             m = torch.zeros(self.batch_size, self.num_atoms).to(self.device)
-            offset = (torch.linspace(0, (self.batch_size - 1) * self.num_atoms, self.batch_size)
-                      .long()
-                      .unsqueeze(1)
-                      .expand(self.batch_size, self.num_atoms)
-                      ).to(self.device)
+            offset = (
+                torch.linspace(
+                    0, (self.batch_size - 1) * self.num_atoms, self.batch_size
+                )
+                .long()
+                .unsqueeze(1)
+                .expand(self.batch_size, self.num_atoms)
+            ).to(self.device)
 
-            m.view(-1).index_add_(0, (l + offset).view(-1),
-                                  (next_q_atoms_target * (u.float() - b)).view(-1))
-            m.view(-1).index_add_(0, (u + offset).view(-1),
-                                  (next_q_atoms_target * (b - l.float())).view(-1))
+            m.view(-1).index_add_(
+                0,
+                (l + offset).view(-1),
+                (next_q_atoms_target * (u.float() - b)).view(-1),
+            )
+            m.view(-1).index_add_(
+                0,
+                (u + offset).view(-1),
+                (next_q_atoms_target * (b - l.float())).view(-1),
+            )
 
         q_atoms = self.policy_net(states)
         q_atoms = q_atoms[range(self.batch_size), actions.squeeze(1)]
@@ -326,17 +379,19 @@ class Agent:
             episode_reward += reward
 
             # Check if the flag was obtained in this step
-            if info.get('flag_get', False):
+            if info.get("flag_get", False):
                 got_flag = True
 
             self.learn(frame_idx)
 
             if done:
                 self.episode_counter += 1  # Increment episode counter
-                print(f"Episode: {self.episode_counter}, Reward: {episode_reward}, Got Flag: {got_flag}")
+                print(
+                    f"Episode: {self.episode_counter}, Reward: {episode_reward}, Got Flag: {got_flag}"
+                )
 
                 # Write to CSV file
-                with open(self.csv_file, 'a', newline='') as f:
+                with open(self.csv_file, "a", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([episode_reward, got_flag])
 
@@ -362,31 +417,42 @@ class Agent:
                 print(f"Frame: {frame_idx}")
 
     def save_model(self):
-        model_path = os.path.join(self.save_path, 'latest_model.pth')
-        torch.save({
-            'episode': self.episode_counter,
-            'model_state_dict': self.policy_net.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-        }, model_path)
+        model_path = os.path.join(self.save_path, "latest_model.pth")
+        torch.save(
+            {
+                "episode": self.episode_counter,
+                "model_state_dict": self.policy_net.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+            },
+            model_path,
+        )
 
     def save_checkpoint(self):
-        checkpoint_path = os.path.join(self.save_path, f'checkpoint_episode_{self.episode_counter}.pth')
-        torch.save({
-            'episode': self.episode_counter,
-            'model_state_dict': self.policy_net.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-        }, checkpoint_path)
+        checkpoint_path = os.path.join(
+            self.save_path, f"checkpoint_episode_{self.episode_counter}.pth"
+        )
+        torch.save(
+            {
+                "episode": self.episode_counter,
+                "model_state_dict": self.policy_net.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+            },
+            checkpoint_path,
+        )
 
     def load_model(self):
-        model_path = os.path.join(self.save_path, 'latest_model.pth')
+        model_path = os.path.join(self.save_path, "latest_model.pth")
         if os.path.exists(model_path):
             checkpoint = torch.load(model_path, map_location=self.device)
-            self.policy_net.load_state_dict(checkpoint['model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.episode_counter = checkpoint.get('episode', 0)
-            print(f"Loaded model from {model_path}, starting from episode {self.episode_counter}")
+            self.policy_net.load_state_dict(checkpoint["model_state_dict"])
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.episode_counter = checkpoint.get("episode", 0)
+            print(
+                f"Loaded model from {model_path}, starting from episode {self.episode_counter}"
+            )
         else:
             print("No saved model found, starting from scratch.")
+
 
 # Main function to run the training
 def main():
@@ -401,6 +467,7 @@ def main():
 
     num_frames = 1000000
     agent.train(num_frames)
+
 
 if __name__ == "__main__":
     main()

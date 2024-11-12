@@ -1,6 +1,8 @@
-import torch
-import numpy as np
 from collections import deque
+
+import numpy as np
+import torch
+
 
 class PrioritizedReplayBuffer:
     """Prioritized Experience Replay with N-step returns."""
@@ -43,7 +45,7 @@ class PrioritizedReplayBuffer:
     def sample(self, batch_size, beta):
         """Samples a batch with importance-sampling weights."""
         priorities = np.array(self.priorities)
-        probs = priorities ** self.alpha
+        probs = priorities**self.alpha
         probs /= probs.sum()
 
         indices = np.random.choice(len(self.buffer), batch_size, p=probs)

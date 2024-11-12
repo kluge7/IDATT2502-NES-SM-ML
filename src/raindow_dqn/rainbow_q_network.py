@@ -16,13 +16,15 @@ class RainbowQNetwork(nn.Module):
         self.atom_size = atom_size
 
         self.feature_layer = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),  # Output: (32, 20, 20)
+            nn.Conv2d(
+                input_channels, 32, kernel_size=8, stride=4
+            ),  # Output: (32, 20, 20)
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),  # Output: (64, 9, 9)
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),  # Output: (64, 7, 7)
             nn.ReLU(),
-            nn.Flatten()
+            nn.Flatten(),
         )
         self.noisy_value1 = NoisyLinear(64 * 7 * 7, 512)
         self.noisy_value2 = NoisyLinear(512, self.atom_size)

@@ -3,7 +3,7 @@ import os
 
 import hyperparameters as hp
 import torch
-from ddqn_agent import DQNAgent
+from dqn_agent import DQNAgent
 
 from src.environment.environment import create_env
 
@@ -14,6 +14,9 @@ def main():
 
     env = create_env()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        print("Using GPU:")
+        print(torch.cuda.get_device_name(0))
     action_size = env.action_space.n
     state_shape = env.observation_space.shape
     agent = DQNAgent(state_shape, action_size, device)
@@ -38,6 +41,7 @@ def main():
             goal_x_pos = 3300
 
             while not done:
+                env.render()
                 action = agent.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 total_reward += reward

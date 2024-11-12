@@ -13,7 +13,7 @@ from src.environment.wrappers import (
 )
 
 
-def create_env(map="SuperMarioBros-v0", skip=4, output_path=None):
+def create_env(map="SuperMarioBros-1-1-v0", skip=4, output_path=None):
     """Sets up the Super Mario Bros environment with customized wrappers."""
     env = JoypadSpace(gym_super_mario_bros.make(map), COMPLEX_MOVEMENT)
     if output_path is not None:
