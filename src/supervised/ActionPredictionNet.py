@@ -33,18 +33,19 @@ class FrameSequenceDataset(Dataset):
 class ActionPredictionNet(nn.Module):
     def __init__(self, input_channels: int, action_size: int):
         super().__init__()
-        print(input)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.features = nn.Sequential(
             nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.Conv2d(64, 64, kernel_size=2, stride=1),
             nn.ReLU(),
         )
         self.fc = nn.Sequential(
-            nn.Linear(64 * 7 * 7, 512), nn.ReLU(), nn.Linear(512, action_size)
+            nn.Linear(64 * 8 * 8, 512), nn.ReLU(), nn.Linear(512, action_size)
         )
+        self.to(self.device)
 
     def forward(self, x):
         """Defines the forward pass of the Q-network.
@@ -58,6 +59,7 @@ class ActionPredictionNet(nn.Module):
             possible action, with dimensions (batch_size, action_size).
 
         """
+        x = x.to(self.device)
         x = self.features(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
@@ -69,6 +71,7 @@ class ActionPredictionModel:
         self, input_channels: int = 3, action_size: int = len(action_to_index)
     ):
         self.model = ActionPredictionNet(input_channels, action_size)
+        self.device = self.model.device
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
 
@@ -77,10 +80,10 @@ class ActionPredictionModel:
         torch.save(self.model.state_dict(), save_path)
 
     def train(self, train_loader, epochs=10):
-        training_result_path = "src/supervised/training_results/action-prediction"
-        os.makedirs("src/supervised/model/action-prediction/", exist_ok=True)
+        training_result_path = "src/supervised/training_results/1-1/"
+        os.makedirs("src/supervised/model/action-prediction/1-1/", exist_ok=True)
         os.makedirs(
-            "src/supervised/model/action-prediction/checkpoints/", exist_ok=True
+            "src/supervised/model/action-prediction/checkpoints/1-1/", exist_ok=True
         )
         os.makedirs(training_result_path, exist_ok=True)
 
@@ -98,6 +101,7 @@ class ActionPredictionModel:
             for epoch in range(epochs):
                 epoch_loss = 0
                 for inputs, labels in train_loader:
+                    inputs, labels = inputs.to(self.device), labels.to(self.device)
                     self.optimizer.zero_grad()
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, labels)
@@ -108,16 +112,16 @@ class ActionPredictionModel:
                 average_epoch_loss = epoch_loss / len(train_loader)
 
                 self.save_model(
-                    "src/supervised/model/action-prediction/ActionPredictionModel.pth"
+                    "src/supervised/model/action-prediction/1-1/ActionPredictionModel.pth"
                 )
 
                 if epoch % 100 == 0:
-                    save_path = f"src/supervised/model/action-prediction/checkpoints/ActionPredictionModel-epoch{epoch}.pth"
+                    save_path = f"src/supervised/model/action-prediction/1-1/checkpoints/ActionPredictionModel-epoch{epoch}.pth"
                     self.save_model(save_path)
 
                 writer.writerow([epoch + 1, average_epoch_loss])
                 file.flush()
-                print(f"Epoch {epoch + 1}/{epochs}, Loss: {average_epoch_loss:.4f}")
+                #print(f"Epoch {epoch + 1}/{epochs}, Loss: {average_epoch_loss:.4f}")
 
 
 def main():
@@ -133,7 +137,8 @@ def main():
     action_size = len(action_to_index)
 
     model = ActionPredictionModel(input_channels, action_size)
-    model.train(train_loader, epochs=1)
+    print(f'using device: {model.device.type}, {model.device}')
+    model.train(train_loader, epochs=2_500)
 
 
 if __name__ == "__main__":
