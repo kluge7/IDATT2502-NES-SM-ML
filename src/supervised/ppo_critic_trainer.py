@@ -102,6 +102,10 @@ def train_for_ppo_critic():
         optimizer.step()
 
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+    torch.save(
+        critic.state_dict(),
+        "src/supervised/model/action-prediction/1-1/trained_critic.pth",
+    )
 
 
 train_for_ppo_critic()
