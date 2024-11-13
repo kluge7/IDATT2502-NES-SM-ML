@@ -41,7 +41,6 @@ def main():
             goal_x_pos = 3300
 
             while not done:
-                env.render()
                 action = agent.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 total_reward += reward
