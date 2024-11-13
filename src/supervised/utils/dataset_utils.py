@@ -191,7 +191,7 @@ def extract_frame_number(filename):
 
 
 def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
-    paths = get_data_by_level(["_1-1_", "_4-1_"])
+    paths = get_data_by_level(["_1-1_"])
     complex_movement_set = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
     image_data = []
 
