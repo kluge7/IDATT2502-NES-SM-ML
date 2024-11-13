@@ -243,6 +243,37 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
     return images, labels
 
 
+def get_bad_events():
+    paths = get_data_by_level(["_1-1_", "_4-1_"])
+    images = []
+    labels = []
+
+    # Define the image transformaiton.
+    # Turn the image grayscale and convert to tensor
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((240, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
+
+    for filename in paths:
+        if filename.endswith(".png"):
+            img_path = filename
+            img = Image.open(img_path)
+            img_tensor = transform(img)
+            images.append(img_tensor)
+
+            action = parse_filename_to_action(filename)
+            labels.append(action)
+
+    images = torch.stack(images)
+
+    return images, labels
+
+
 def load_dataset_without_get_action() -> tuple[torch.Tensor, list]:
     paths = get_data_by_level(["_1-1_", "_4-1_"])
     images = []
