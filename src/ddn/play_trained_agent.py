@@ -2,7 +2,7 @@ import time
 
 import hyperparameters as hp
 import torch
-from ddqn_agent import DQNAgent
+from dqn_agent import DQNAgent
 
 from src.environment.environment import create_env
 
