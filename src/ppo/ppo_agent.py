@@ -380,7 +380,7 @@ class PPOAgent:
             if self.options.kl_divergence and kl > self.options.target_kl:
                 break
 
-        return np.mean(actor_losses), np.mean(critic_losses)
+        return np.mean([loss.cpu().numpy() for loss in actor_losses]), np.mean([loss.cpu().numpy() for loss in critic_losses])
 
     def train(self, max_timesteps):
         """Trains the agent in the environment using PPO.
@@ -506,6 +506,8 @@ class PPOAgent:
 
     def load_networks(self, actor_path=None, critic_path=None):
         """Loads the actor and critic network weights from the specified paths."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(device)
         try:
             if actor_path is None:
                 actor_path = os.path.join(
@@ -516,7 +518,7 @@ class PPOAgent:
                     self.options.model_path, self.options.model_critic
                 )
 
-            self.actor.load_state_dict(torch.load(actor_path))
+            self.actor.load_state_dict(torch.load(actor_path, map_location=device))
             self.critic.load_state_dict(torch.load(critic_path))
         except FileNotFoundError:
             print(
@@ -537,11 +539,11 @@ def main():
     specification = f"SuperMarioBros-{world}-{stage}-{env_version}"
     env = create_env(map=specification, skip=4, actions=COMPLEX_MOVEMENT)
 
-    options = PPOHyperparameters(render=True, specification=specification)
+    options = PPOHyperparameters(render=False, specification=specification)
 
     agent = PPOAgent(env, options)
-    agent.load_networks(actor_path="src/ppo/model/ActionPredictionModel.pth")
-
+    print(agent.device)
+    #agent.load_networks(actor_path="src/ppo/model/ActionPredictionModel.pth")
     total_timesteps = 3_000_000
     agent.train(max_timesteps=total_timesteps)
 

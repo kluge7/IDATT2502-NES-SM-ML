@@ -23,7 +23,7 @@ def create_env(
     """Sets up the Super Mario Bros environment with customized wrappers."""
     # env = JoypadSpace(gym_super_mario_bros.make(map, stages), actions)
 
-    env = gym.make("SuperMarioBrosRandomStages-v0", stages=["1-1", "4-1"])
+    env = gym.make("SuperMarioBrosRandomStages-v0", stages=["1-1"])
     env = JoypadSpace(env, actions)
 
     if output_path is not None:
