@@ -16,6 +16,49 @@ py_dir = os.path.dirname(py_file)  # path to the parent dir of main.py
 data_folder = os.path.join(py_dir, "data-smb")  # path to info.txt
 
 
+def extract_bad_frame_number(file_name):
+    match = re.search(r"_f(\d+)", file_name)
+    return int(match.group(1)) if match else -1
+
+
+# avg endframes = (193, 180, 177, 202)/4 = 188
+# Add 100 frames before the accident = 100/4 = 25 steps??
+# take the 288 frames at the end
+
+
+def get_death_frames():
+    levels = "_1-1_"
+
+    py_file_ = os.path.abspath(__file__)  # path to main.py
+    py_dir_ = os.path.dirname(py_file_)  # path to the parent dir of main.py
+    data_folder_ = os.path.join(py_dir_, "data-fail-1-1")  # path to data-smb
+
+    print(f"Searching in: {data_folder_}")
+    res = []
+
+    # Ensure levels is a list
+    if isinstance(levels, str):
+        matches = [levels.lower()]
+    else:
+        matches = [level.lower() for level in levels]
+
+    for root, _dir_names, file_names in os.walk(data_folder_):
+        # Filter files that match the level criteria
+        matched_files = [f for f in file_names if any(m in f.lower() for m in matches)]
+
+        # extract the frame number and sort by it
+        matched_files.sort(key=extract_bad_frame_number)
+
+        # Take the last 288 files from the sorted list
+        last_288_files = matched_files[-288:]
+
+        # Append the full paths of the last 288 files
+        for file_name in last_288_files:
+            res.append(os.path.join(root, file_name))
+
+    return res
+
+
 # level _1-1_, _1-2_, etc.
 def get_data_by_level(levels, only_win=True):
     py_file_ = os.path.abspath(__file__)  # path to main.py
@@ -244,7 +287,7 @@ def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
 
 
 def get_bad_events():
-    paths = get_data_by_level(["_1-1_", "_4-1_"])
+    paths = get_death_frames()
     images = []
     labels = []
 
@@ -368,3 +411,6 @@ def train_test_spit(
     training_labels, test_labels = labels[:split_index], labels[split_index:]
 
     return training_images, test_images, training_labels, test_labels
+
+
+get_death_frames()
