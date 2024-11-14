@@ -233,8 +233,13 @@ def extract_frame_number(filename):
     return 0  # Return 0 if no frame number is found
 
 
-def load_dataset(data_dir=data_folder) -> tuple[torch.Tensor, list]:
-    paths = get_data_by_level(["_1-1_"])
+def load_dataset(data_dir=data_folder, is_fails=False) -> tuple[torch.Tensor, list]:
+    if is_fails:
+        paths = get_death_frames()
+        print("loading fails")
+    else:
+        paths = get_data_by_level(["_1-1_"])
+        print("loading wins")
     complex_movement_set = {tuple(sorted(action)) for action in COMPLEX_MOVEMENT}
     image_data = []
 
@@ -411,6 +416,3 @@ def train_test_spit(
     training_labels, test_labels = labels[:split_index], labels[split_index:]
 
     return training_images, test_images, training_labels, test_labels
-
-
-get_death_frames()
