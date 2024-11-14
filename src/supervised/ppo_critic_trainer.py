@@ -1,3 +1,6 @@
+import csv
+import os
+
 import torch
 from torch import nn
 from torch.optim import Adam
@@ -38,73 +41,78 @@ def generate_random_data(batch_size, in_dim):
 
 
 def train_for_ppo_critic():
-    # load inn model
-    # load inn all treningsdata
-
-    # load inn dårlig data??????
+    # Load in model, training data, and initialize necessary components
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    supervised_data, labels = dataset_utils.load_dataset()
-    random_data = generate_random_data(
-        batch_size=supervised_data.size(0), in_dim=(4, 84, 84)
-    )
+    supervised_data_wins, _ = dataset_utils.load_dataset()
+    supervised_data_fails, _ = dataset_utils.load_dataset(is_fails=True)
 
-    supervised_model = CNNNetwork(
-        in_dim=(4, 84, 84), out_dim=12
-    )  # load inn fra allerede eksiterende. ikke gjør slik det er nå
+    supervised_model = CNNNetwork(in_dim=(4, 84, 84), out_dim=12)
     critic = CriticCNNNetwork(in_dim=(4, 84, 84))
 
+    # Load pretrained model
     supervised_model.load_state_dict(
         torch.load(
             "src/supervised/model/action-prediction/1-1/ActionPredictionModel.pth",
             map_location=device,
         )
     )
-    print(f"model features: {supervised_model.features}")
-    # self.critic.load_state_dict(torch.load(critic_path))
 
-    # Load pretrained weights from supervised model to critic and freeze CNN layers
+    # Load weights into critic model and freeze layers
     critic.features.load_state_dict(supervised_model.features.state_dict())
     for param in critic.features.parameters():
         param.requires_grad = False
 
-    print(f"critic features: {critic.features}")
+    # Set up criterion and optimizer
+    criterion = nn.BCELoss()
+    optimizer = Adam(critic.fc.parameters(), lr=1e-3)
 
-    # Set up criterion and optimizer for binary classification
-    criterion = nn.BCELoss()  # Binary Cross-Entropy Loss for 0 and 1 outputs
-    optimizer = Adam(critic.fc.parameters(), lr=1e-3)  # Train only the fc layer
-
-    supervised_labels = torch.ones(
-        (supervised_data.size(0), 1)
-    )  # Labels 1 for supervised data
+    # Labels for supervised and random data
+    supervised_labels_wins = torch.ones((supervised_data_wins.size(0), 1))
+    supervised_labels_fails = torch.zeros((supervised_data_fails.size(0), 1))
 
     # Concatenate data and labels
-    random_data = generate_random_data(
-        batch_size=supervised_data.size(0), in_dim=(4, 84, 84)
-    )
-    random_labels = torch.zeros((random_data.size(0), 1))  # Labels 0 for random data
+    data = torch.cat((supervised_data_wins, supervised_data_fails), dim=0)
+    labels = torch.cat((supervised_labels_wins, supervised_labels_fails), dim=0)
 
-    # Concatenate supervised and random data
-    data = torch.cat((supervised_data, random_data), dim=0)
-    labels = torch.cat((supervised_labels, random_labels), dim=0)
+    # Prepare CSV file for logging losses
+    training_result_path = "src/supervised/training_results/ppo_critic"
+    os.makedirs(training_result_path, exist_ok=True)
+    output_csv = "ppo_critic_training_results.csv"
+    training_output_file = os.path.join(training_result_path, output_csv)
 
-    # Training loop
-    num_epochs = 10
-    for epoch in range(num_epochs):
-        critic.train()
-        optimizer.zero_grad()
+    with open(training_output_file, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Epoch", "Loss"])
 
-        # Forward pass
-        outputs = critic(data)
-        loss = criterion(outputs, labels)
+        # Training loop
+        num_epochs = 1000
+        for epoch in range(num_epochs):
+            critic.train()
+            optimizer.zero_grad()
 
-        # Backward pass and optimization
-        loss.backward()
-        optimizer.step()
+            # Forward pass
+            outputs = critic(data)
+            loss = criterion(outputs, labels)
 
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+            # Backward pass and optimization
+            loss.backward()
+            optimizer.step()
+
+            # Log the loss for this epoch
+            writer.writerow([epoch + 1, loss.item()])
+            file.flush()
+
+            print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+
+            # Save checkpoints
+            if epoch % 100 == 0:
+                checkpoint_path = f"src/supervised/model/action-prediction/ppo-critic/checkpoints/trained_critic-e{epoch}.pth"
+                torch.save(critic.state_dict(), checkpoint_path)
+
+    # Final model save
     torch.save(
         critic.state_dict(),
-        "src/supervised/model/action-prediction/1-1/trained_critic.pth",
+        "src/supervised/model/action-prediction/ppo-critic/trained_critic.pth",
     )
 
 
