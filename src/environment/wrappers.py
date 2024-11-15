@@ -101,7 +101,7 @@ class NormalizePixels(gym.ObservationWrapper):
         return np.array(obs).astype(np.float32) / 255.0
 
 
-# Some commands to install ffmpeg I guess:
+# Some commands to install ffmpeg:
 # ---------------------------------------
 # iwr -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip; `
 # Expand-Archive -Path ffmpeg.zip -DestinationPath .; `
@@ -114,7 +114,7 @@ class Monitor:
     def __init__(self, width, height, saved_path="output"):
         """Initializes ffmpeg video recording for the environment."""
         # Path to the ffmpeg executable in your project structure
-        ffmpeg_path = os.path.join("..", "..", "ffmpeg", "bin", "ffmpeg.exe")
+        ffmpeg_path = os.path.join("ffmpeg", "bin", "ffmpeg.exe")
 
         # Define the ffmpeg command to start recording
         self.command = [
@@ -129,12 +129,18 @@ class Monitor:
             "-pix_fmt",
             "rgb24",
             "-r",
-            "60",
+            "60",  # Input frame rate
             "-i",
             "-",
             "-an",
             "-vcodec",
             "mpeg4",
+            "-preset",
+            "ultrafast",  # Encoding speed optimization
+            "-crf",
+            "30",  # Balance between speed and quality
+            "-filter:v",
+            "setpts=0.25*PTS",  # Adjust playback speed to 4x faster
             saved_path,
         ]
 
