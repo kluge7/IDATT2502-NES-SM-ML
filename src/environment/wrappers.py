@@ -129,18 +129,18 @@ class Monitor:
             "-pix_fmt",
             "rgb24",
             "-r",
-            "60",  # Input frame rate
+            "60",
             "-i",
             "-",
             "-an",
             "-vcodec",
             "mpeg4",
             "-preset",
-            "ultrafast",  # Encoding speed optimization
+            "ultrafast",
             "-crf",
-            "30",  # Balance between speed and quality
+            "30",
             "-filter:v",
-            "setpts=0.25*PTS",  # Adjust playback speed to 4x faster
+            "setpts=0.25*PTS",
             saved_path,
         ]
 
