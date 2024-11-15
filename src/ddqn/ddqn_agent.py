@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from prioritized_replay_buffer import PrioritizedReplayBuffer
 
-from src.models.cnn_network import CNNNetwork
+from src.network.cnn_network import CNNNetwork
 
 
 class DDQNAgent:

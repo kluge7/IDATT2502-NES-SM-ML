@@ -24,7 +24,7 @@ class PPOAgent:
         else:
             torch.manual_seed(123)
 
-        # Prepare paths for saving logs and models
+        # Prepare paths for saving logs and network
         if os.path.isdir(opt.log_path):
             shutil.rmtree(opt.log_path)
         os.makedirs(opt.log_path)
@@ -219,7 +219,7 @@ class Opt:
     num_epochs = 4
     batch_size = 32
     log_path = "logs"
-    saved_path = "models"
+    saved_path = "network"
 
 
 def main():

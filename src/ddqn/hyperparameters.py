@@ -7,7 +7,7 @@ TARGET_UPDATE_FREQUENCY = 1000
 EPSILON_START = 0.01
 EPSILON_END = 0.01
 EPSILON_DECAY = 100000
-MODEL_SAVE_PATH = "model/ddqn_1-1.pth"
+MODEL_SAVE_PATH = "model/ddqn_1-1_supervised.pth"
 CSV_FILENAME = "training_results/training_log_ddqn_1-1.csv"
 
 # Prioritized Replay Buffer parameters
