@@ -3,6 +3,9 @@ import os
 
 from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
 
+from src.ddqn.ddqn_trainer import train
+from src.ddqn.hyperparameters import DDQNHyperparameters
+from src.ddqn.play_trained_agent import play_trained_agent
 from src.environment.environment import create_env
 from src.ppo.ppo_agent import PPOAgent
 from src.ppo.ppo_hyperparameters import PPOHyperparameters
@@ -19,7 +22,7 @@ if __name__ == "__main__":
         help="Select an option: 'train' for PPO training, 'test' for PPO testing on a model",
     )
 
-    # General options for main method (DDQN/PPO/Supervised)
+    # General options for main method (DDQN/PPO)
     parser.add_argument(
         "--method",
         nargs="?",
@@ -189,9 +192,146 @@ if __name__ == "__main__":
         help="Episode results directory",
     )
 
+    # Arguments for DQN Hyperparameters
+    parser.add_argument(
+        "--ddqn_gamma",
+        type=float,
+        default=0.99,
+        help="Discount factor for future rewards",
+    )
+    parser.add_argument(
+        "--ddqn_batch_size",
+        type=int,
+        default=32,
+        help="Batch size for experience replay",
+    )
+    parser.add_argument(
+        "--ddqn_learning_rate",
+        type=float,
+        default=1e-4,
+        help="Learning rate for the optimizer",
+    )
+    parser.add_argument(
+        "--ddqn_replay_memory",
+        type=int,
+        default=100000,
+        help="Size of the replay memory buffer",
+    )
+    parser.add_argument(
+        "--ddqn_target_update_freq",
+        type=int,
+        default=1000,
+        help="Target network update frequency",
+    )
+
+    parser.add_argument(
+        "--ddqn_epsilon_start",
+        type=float,
+        default=0.01,
+        help="Starting value of epsilon for exploration",
+    )
+    parser.add_argument(
+        "--ddqn_epsilon_end",
+        type=float,
+        default=0.01,
+        help="Final value of epsilon for exploration",
+    )
+    parser.add_argument(
+        "--ddqn_epsilon_decay",
+        type=int,
+        default=100000,
+        help="Number of steps to decay epsilon",
+    )
+
+    # Model saving and logging
+    parser.add_argument(
+        "--ddqn_model_save",
+        type=str,
+        default="src/ddqn/model/ddqn_1-1_supervised.pth",
+        help="Path to save the model",
+    )
+    parser.add_argument(
+        "--ddqn_log_csv",
+        type=str,
+        default="src/ddqn/training_results/training_log_ddqn_1-1.csv",
+        help="Path for saving CSV logs",
+    )
+
+    # Prioritized Replay Buffer
+    parser.add_argument(
+        "--ddqn_priority_alpha",
+        type=float,
+        default=0.6,
+        help="Alpha parameter for prioritized replay",
+    )
+    parser.add_argument(
+        "--ddqn_priority_beta_start",
+        type=float,
+        default=0.4,
+        help="Initial beta for importance-sampling weights",
+    )
+    parser.add_argument(
+        "--priority_beta_frames", type=int, default=100000, help="Frames to anneal beta"
+    )
+
+    # Parameters for running a trained agent
+    parser.add_argument(
+        "--eval_runs",
+        type=int,
+        default=50,
+        help="Number of evaluation runs for the trained agent",
+    )
+    parser.add_argument(
+        "--eval_delay",
+        type=float,
+        default=0.05,
+        help="Delay between actions in evaluation (seconds)",
+    )
+
+    # Training control parameters
+    parser.add_argument(
+        "--episodes", type=int, default=100000, help="Number of training episodes"
+    )
+    parser.add_argument(
+        "--save_every", type=int, default=100, help="Save model after every X episodes"
+    )
+
+    # Moving average for plotting
+    parser.add_argument(
+        "--moving_avg",
+        type=int,
+        default=300,
+        help="Window size for moving average in plots",
+    )
+
+    # Parse arguments
     args = parser.parse_args()
 
-    hyperparameters = PPOHyperparameters(
+    # Example usage:
+    # Arguments parsed can now be used to initialize the DQNHyperparameters class
+    # This step is manual to ensure the mapping remains flexible
+    ddqn_hyperparameters = DDQNHyperparameters(
+        gamma=args.ddqn_gamma,
+        batch_size=args.ddqn_batch_size,
+        lr=args.ddqn_learning_rate,
+        replay_memory_size=args.ddqn_replay_memory,
+        target_update_frequency=args.ddqn_target_update_freq,
+        epsilon_start=args.ddqn_epsilon_start,
+        epsilon_end=args.ddqn_epsilon_end,
+        epsilon_decay=args.ddqn_epsilon_decay,
+        model_save_path=args.ddqn_model_save,
+        csv_filename=args.ddqn_log_csv,
+        priority_alpha=args.ddqn_priority_alpha,
+        priority_beta_start=args.ddqn_priority_beta_start,
+        priority_beta_frames=args.priority_beta_frames,
+        runs=args.eval_runs,
+        delay=args.eval_delay,
+        moving_average_window=args.moving_avg,
+        num_episodes=args.episodes,
+        save_every=args.save_every,
+    )
+
+    ppo_hyperparameters = PPOHyperparameters(
         timesteps_per_batch=args.timesteps_per_batch,
         max_timesteps_per_episode=args.max_timesteps_per_episode,
         gamma=args.gamma,
@@ -223,7 +363,7 @@ if __name__ == "__main__":
         if args.method == "PPO":
             print("Training PPO model...")
             env = create_env(map=specification, skip=4, actions=COMPLEX_MOVEMENT)
-            agent = PPOAgent(env, hyperparameters)
+            agent = PPOAgent(env, ppo_hyperparameters)
             if args.actor_load_path and args.critic_load_path:
                 agent.load_networks(
                     actor_path=args.actor_load_path, critic_path=args.critic_load_path
@@ -232,7 +372,7 @@ if __name__ == "__main__":
 
         if args.method == "DDQN":
             print("Training DDQN model...")
-            # ADD ddqn training method
+            train(ddqn_hyperparameters)
 
     if args.option == "test":
         if args.method == "PPO":
@@ -248,7 +388,7 @@ if __name__ == "__main__":
                 actions=COMPLEX_MOVEMENT,
                 output_path=output_path,
             )
-            agent = PPOAgent(env, hyperparameters)
+            agent = PPOAgent(env, ppo_hyperparameters)
             if args.actor_load_path and args.critic_load_path:
                 agent.load_networks(
                     actor_path=args.actor_load_path, critic_path=args.critic_load_path
@@ -257,4 +397,16 @@ if __name__ == "__main__":
 
         if args.method == "DDQN":
             print("Testing DDQN model...")
-            # Add ddqn testing method
+            if args.record:
+                os.makedirs("src/ddqn/output", exist_ok=True)
+                output_path = f"src/ddqn/output/{specification}.mp4"
+            else:
+                output_path = None
+            env = create_env(
+                map=specification,
+                skip=4,
+                actions=COMPLEX_MOVEMENT,
+                output_path=output_path,
+            )
+
+            play_trained_agent(hp=ddqn_hyperparameters, env=env)
