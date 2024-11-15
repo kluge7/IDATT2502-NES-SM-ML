@@ -8,7 +8,7 @@ from src.ppo.ppo_agent import PPOAgent
 from src.ppo.ppo_hyperparameters import PPOHyperparameters
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PPO trainer")
+    parser = argparse.ArgumentParser(description="IDATT2502 - Project")
 
     # General options for main training/testing
     parser.add_argument(
