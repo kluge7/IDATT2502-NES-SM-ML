@@ -10,10 +10,9 @@ from torch import nn, optim
 from torch.distributions import Categorical
 
 from src.environment.environment import create_env
-from src.utils import get_unique_filename
-
 from src.network.cnn_network import CNNNetwork
 from src.ppo.ppo_hyperparameters import PPOHyperparameters
+from src.utils import get_unique_filename
 
 
 class PPOAgent:
