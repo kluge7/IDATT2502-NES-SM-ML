@@ -65,6 +65,18 @@ python main.py train --method=PPO
 
 There are many more arguments you can set. For more details, check out the [main.py](./main.py) file.
 
+#### Train with DDQN
+To train models with DDQN, use this command:
+```bash
+python main.py train --method=DDQN --episodes=15000
+```
+
+To train from an already trained model, use this command:
+```bash
+python main.py train --method=DDQN
+--ddqn_model_save="src/ddqn/model/ddqn_1-1.pth"
+```
+
 ### Test models
 
 #### Test with PPO models
@@ -102,6 +114,17 @@ python main.py test --method=PPO
 --critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
 ```
 
+#### Test with DDQN models
+To test DDQN models use this command:
+```bash
+python main.py test --method=DDQN
+--record=True
+--ddqn_model_save="src/ddqn/model/ddqn_1-1_supervised.pth"
+--eval_runs=5
+```
+This will record and use provided DDQN model for 5 episodes.
+
+
 ## Training performance
 #### Episodic rewards over all algorithms
 <img src="./src/plots/Compare-All-episodic-rewards.PNG" alt="Graph over episodic rewards for all algorithms" width="600"/>
@@ -109,13 +132,16 @@ python main.py test --method=PPO
 #### Success rate over all algorithms
 <img src="./src/plots/Compare-All-success-rate.PNG" alt="Graph over success rate for all algorithms" width="600"/>
 
-## Result runs
-
-#### PPO
-<img src="./src/example_runs/PPO_SuperMarioBros-1-1-v0.gif" alt="PPO run" width="200"/>
+## Results
 
 #### DDQN
 <img src="./src/example_runs/DDQN_SuperMarioBros-1-1-v0.gif" alt="DQQN run" width="200"/>
 
 #### Supervised DDQN
 <img src="./src/example_runs/Supervised_DDQN_SuperMarioBros-1-1-v0.gif" alt="Supervised DQQN run" width="200"/>
+
+#### PPO
+<img src="./src/example_runs/PPO_SuperMarioBros-1-1-v0.gif" alt="PPO run" width="200"/>
+
+#### Supervised PPO
+<img src="./src/example_runs/Supervised_PPO_SuperMarioBros-1-1-v0.gif" alt="Supervised PPO run" width="200"/>
