@@ -32,7 +32,7 @@ def load_trained_agent(in_dim, num_actions, actor_path, critic_path):
     agent.actor.load_state_dict(torch.load(actor_path, map_location=device))
     agent.critic.load_state_dict(torch.load(critic_path, map_location=device))
 
-    # Move models to the device
+    # Move network to the device
     agent.actor.to(device)
     agent.critic.to(device)
 
