@@ -1,37 +1,39 @@
 import math
 import random
 
-import hyperparameters as hp
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from prioritized_replay_buffer import PrioritizedReplayBuffer
 
+from src.ddqn.hyperparameters import DDQNHyperparameters
+from src.ddqn.prioritized_replay_buffer import PrioritizedReplayBuffer
 from src.network.cnn_network import CNNNetwork
 
 
 class DDQNAgent:
-    def __init__(self, state_shape, action_size, device):
+    def __init__(self, state_shape, action_size, device, hp: DDQNHyperparameters):
         self.device = device
         self.action_size = action_size
-        self.gamma = hp.GAMMA
-        self.batch_size = hp.BATCH_SIZE
-        self.target_update_frequency = hp.TARGET_UPDATE_FREQUENCY
+        self.gamma = hp.gamma
+        self.batch_size = hp.batch_size
+        self.target_update_frequency = hp.target_update_frequency
 
         self.policy_net = CNNNetwork(state_shape[0], action_size).to(device)
         self.target_net = CNNNetwork(state_shape[0], action_size).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=hp.LR)
-        self.memory = PrioritizedReplayBuffer(hp.REPLAY_MEMORY_SIZE, hp.PRIORITY_ALPHA)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=hp.lr)
+        self.memory = PrioritizedReplayBuffer(hp.replay_memory_size, hp.priority_alpha)
 
         self.steps_done = 0
-        self.epsilon_start = hp.EPSILON_START
-        self.epsilon_end = hp.EPSILON_END
-        self.epsilon_decay = hp.EPSILON_DECAY
-        self.beta = hp.PRIORITY_BETA_START
-        self.beta_frames = hp.PRIORITY_BETA_FRAMES
+        self.epsilon_start = hp.epsilon_start
+        self.epsilon_end = hp.epsilon_end
+        self.epsilon_decay = hp.epsilon_decay
+        self.beta = hp.priority_beta_start
+        self.beta_frames = hp.priority_beta_frames
+        self.model_save_path = hp.model_save_path
+        self.csv_filename = hp.csv_filename
 
     def get_epsilon_threshold(self):
         return self.epsilon_end + (self.epsilon_start - self.epsilon_end) * math.exp(
@@ -67,7 +69,7 @@ class DDQNAgent:
         target values.
         """
         if (
-            len(self.memory) < hp.REPLAY_MEMORY_SIZE / 4
+            len(self.memory) < self.memory.capacity / 4
         ):  # Train only after buffer is 1/4 full
             return
 
@@ -120,10 +122,12 @@ class DDQNAgent:
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def save_model(self):
-        torch.save(self.policy_net.state_dict(), hp.MODEL_SAVE_PATH)
-        print(f"Model saved to {hp.MODEL_SAVE_PATH}")
+        torch.save(self.policy_net.state_dict(), self.model_save_path)
+        print(f"Model saved to {self.model_save_path}")
 
-    def load_model(self, path):
+    def load_model(self, path=None):
+        if path is None:
+            path = self.model_save_path
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.policy_net.load_state_dict(torch.load(path, map_location=device))
         self.target_net.load_state_dict(self.policy_net.state_dict())

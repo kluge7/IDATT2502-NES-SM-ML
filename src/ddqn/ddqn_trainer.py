@@ -1,34 +1,35 @@
 import csv
 import os
 
-import hyperparameters as hp
 import torch
-from ddqn_agent import DDQNAgent
 
+from src.ddqn.ddqn_agent import DDQNAgent
+from src.ddqn.hyperparameters import DDQNHyperparameters
 from src.environment.environment import create_env
 
 
-def main():
-    num_episodes = hp.NUM_EPISODES
-    save_every = hp.SAVE_EVERY
+def train(hp: DDQNHyperparameters):
+    num_episodes = hp.num_episodes
+    save_every = hp.save_every
 
     env = create_env()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
-        print("Using GPU:")
-        print(torch.cuda.get_device_name(0))
+        print("Using GPU:", torch.cuda.get_device_name(0))
+
     action_size = env.action_space.n
     state_shape = env.observation_space.shape
-    agent = DDQNAgent(state_shape, action_size, device)
+    agent = DDQNAgent(state_shape, action_size, device, hp)
 
-    if os.path.exists(hp.MODEL_SAVE_PATH):
-        agent.load_model(hp.MODEL_SAVE_PATH)
+    if os.path.exists(hp.model_save_path):
+        agent.load_model(hp.model_save_path)
 
-    with open(hp.CSV_FILENAME, "a", newline="") as csvfile:
+    with open(hp.csv_filename, "a", newline="") as csvfile:
         fieldnames = ["Reward", "Got Flag", "Max Distance %"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-        if os.path.getsize(hp.CSV_FILENAME) == 0:
+        # Write header only if file is empty
+        if os.path.getsize(hp.csv_filename) == 0:
             writer.writeheader()
 
         for episode in range(1, num_episodes + 1):
@@ -57,13 +58,13 @@ def main():
                 state = next_state
                 agent.update()
 
-                if agent.steps_done % agent.target_update_frequency == 0:
+                if agent.steps_done % hp.target_update_frequency == 0:
                     agent.update_target_network()
 
             max_distance_percentage = (max_x_pos / goal_x_pos) * 100
 
             if episode % save_every == 0:
-                agent.save_model()
+                agent.save_model(hp.model_save_path)
 
             writer.writerow(
                 {
@@ -83,4 +84,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    hp = DDQNHyperparameters()
+    train(hp)
