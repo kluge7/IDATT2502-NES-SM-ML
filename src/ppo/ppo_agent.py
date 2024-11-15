@@ -5,14 +5,15 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from cnn_network import CNNNetwork
 from gym_super_mario_bros.actions import COMPLEX_MOVEMENT
-from ppo_hyperparameters import PPOHyperparameters
 from torch import nn, optim
 from torch.distributions import Categorical
 
 from src.environment.environment import create_env
 from src.utils import get_unique_filename
+
+from .cnn_network import CNNNetwork
+from .ppo_hyperparameters import PPOHyperparameters
 
 
 class PPOAgent:
@@ -118,13 +119,13 @@ class PPOAgent:
     def evaluate(self, batch_observations, batch_actions):
         r"""Evaluates value estimates V(s) and action log probabilities for a batch.
 
-        Given a state s, the value function V(s) is defined as:\n
-        V(s) = E[Σₖ₌₀ⁿ (γᵏ * rₜ₊ₖ | sₜ = s)]\n
-        where:\n
-        - V(s) is the expected return from state s\n
-        - γ is the discount factor (0 < γ < 1)\n
-        - rₜ₊ₖ is the reward received k steps into the future\n
-        - The critic network approximates V(s) based on this expectation.\n
+        Given a state s, the value function V(s) is defined as:
+        V(s) = E[Σₖ₌₀ⁿ (γᵏ * rₜ₊ₖ | sₜ = s)]
+        where:
+        - V(s) is the expected return from state s
+        - γ is the discount factor (0 < γ < 1)
+        - rₜ₊ₖ is the reward received k steps into the future
+        - The critic network approximates V(s) based on this expectation.
 
         Args:
             batch_observations (torch.Tensor): Batch of observations.
@@ -272,18 +273,18 @@ class PPOAgent:
     ):
         r"""Updates the actor and critic networks using PPO by using clipped surrogate objective for the actor and Mean Squared Error (MSE) for the critic.
 
-        PPO policy update:\n
-        Lₜ_clip = E[min(rₜ(θ) * Aₜ, clip(rₜ(θ), 1 - ε, 1 + ε) * Aₜ)]\n
-        where:\n
-        - rₜ(θ) is the policy ratio: rₜ(θ) = π_θ(aₜ | sₜ) / π_θ₋₁(aₜ | sₜ)\n
-        - Aₜ is the advantage estimate for each state-action pair\n
-        - ε is a clipping parameter to prevent large policy updates.\n
-
-        Critic value update:\n
-        critic_loss = MSE(v, Rₜ)\n
+        PPO policy update:
+        Lₜ_clip = E[min(rₜ(θ) * Aₜ, clip(rₜ(θ), 1 - ε, 1 + ε) * Aₜ)]
         where:
-        - v is the predicted value for each state, V(s)\n
-        - Rₜ is the target return for each state-action pair.\n
+        - rₜ(θ) is the policy ratio: rₜ(θ) = π_θ(aₜ | sₜ) / π_θ₋₁(aₜ | sₜ)
+        - Aₜ is the advantage estimate for each state-action pair
+        - ε is a clipping parameter to prevent large policy updates.
+
+        Critic value update:
+        critic_loss = MSE(v, Rₜ)
+        where:
+        - v is the predicted value for each state, V(s)
+        - Rₜ is the target return for each state-action pair.
 
         Args:
             batch_observations (torch.Tensor): Batch of observations.
@@ -516,12 +517,55 @@ class PPOAgent:
                     self.options.model_path, self.options.model_critic
                 )
 
-            self.actor.load_state_dict(torch.load(actor_path))
-            self.critic.load_state_dict(torch.load(critic_path))
+            # Use map_location to load model to CPU if GPU is not available
+            self.actor.load_state_dict(torch.load(actor_path, map_location=self.device))
+            self.critic.load_state_dict(
+                torch.load(critic_path, map_location=self.device)
+            )
         except FileNotFoundError:
             print(
                 f"Error: Could not find model files at {actor_path} or {critic_path}. Starting training from scratch..."
             )
+
+    def test(self, render=True, episodes=1):
+        """Plays episodes using the trained actor network without updating it.
+
+        Args:
+            render (bool): If True, renders the environment during the episode.
+            episodes (int): Number of episodes to play.
+        """
+        success_rate_list = []
+
+        for _ in range(episodes):
+            observation = self.env.reset()
+            done = False
+            total_reward = 0
+            step_count = 0
+            flag_reached = False  # Track if the agent reached the flag
+
+            while not done:
+                if render:
+                    self.env.render()
+
+                # Select action based on the current policy (actor network)
+                action, _ = self.select_action(observation)
+
+                # Take the selected action in the environment
+                observation, reward, done, info = self.env.step(action)
+
+                # Check if the flag was reached
+                if info.get("flag_get"):
+                    flag_reached = True
+                    success_rate_list.append(1)
+
+                # Accumulate the reward for the episode
+                total_reward += reward
+                step_count += 1
+
+            print(
+                f"Episode finished in {step_count} steps with total reward: {total_reward}. Flag reached: {'Yes' if flag_reached else 'No'}"
+            )
+        print(f"Success rate: {(np.sum(success_rate_list) / episodes)*100:.2f}%")
 
 
 def main():
@@ -540,7 +584,10 @@ def main():
     options = PPOHyperparameters(render=True, specification=specification)
 
     agent = PPOAgent(env, options)
-    agent.load_networks(actor_path="src/ppo/model/ActionPredictionModel.pth")
+    agent.load_networks(
+        actor_path="model/ActionPredictionModel (1).pth",
+        critic_path="model/trained_critic.pth",
+    )
 
     total_timesteps = 3_000_000
     agent.train(max_timesteps=total_timesteps)
