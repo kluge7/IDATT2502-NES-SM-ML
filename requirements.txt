@@ -2,7 +2,14 @@
 gym==0.25.1
 gym-notices==0.0.8
 gym-super-mario-bros==7.4.0
+matplotlib==3.9.2
 nes-py==8.2.1
 numpy==1.26.4
 opencv-python==4.10.0.84
+pandas==2.2.3
+pillow==11.0.0
 pre-commit
+scikit-learn==1.5.2
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
