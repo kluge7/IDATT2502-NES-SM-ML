@@ -33,7 +33,6 @@ class FrameSequenceDataset(Dataset):
 class ActionPredictionNet(nn.Module):
     def __init__(self, input_channels: int, action_size: int):
         super().__init__()
-        print(input)
         self.features = nn.Sequential(
             nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),
             nn.ReLU(),
