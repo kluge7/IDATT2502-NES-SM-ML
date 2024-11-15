@@ -12,8 +12,8 @@ from torch.distributions import Categorical
 from src.environment.environment import create_env
 from src.utils import get_unique_filename
 
-from .cnn_network import CNNNetwork
-from .ppo_hyperparameters import PPOHyperparameters
+from src.network.cnn_network import CNNNetwork
+from src.ppo.ppo_hyperparameters import PPOHyperparameters
 
 
 class PPOAgent:
@@ -38,10 +38,10 @@ class PPOAgent:
         self.obs_dimension = env.observation_space.shape
         self.action_dimension = env.action_space.n
 
-        self.actor = CNNNetwork(self.obs_dimension, self.action_dimension).to(
+        self.actor = CNNNetwork(self.obs_dimension[0], self.action_dimension).to(
             self.device
         )
-        self.critic = CNNNetwork(self.obs_dimension, 1).to(self.device)
+        self.critic = CNNNetwork(self.obs_dimension[0], 1).to(self.device)
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=options.lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=options.lr)
@@ -230,7 +230,7 @@ class PPOAgent:
             batch_dones.append(episode_dones)
 
             with open(
-                os.path.join(self.options.episode_result_path, episode_output_file),
+                episode_output_file,
                 mode="a",
                 newline="",
             ) as file:
@@ -404,7 +404,7 @@ class PPOAgent:
         )
 
         with open(
-            os.path.join(self.options.training_result_path, training_output_file),
+            training_output_file,
             mode="w",
             newline="",
         ) as file:
@@ -420,7 +420,7 @@ class PPOAgent:
             )
 
         with open(
-            os.path.join(self.options.episode_result_path, episode_output_file),
+            episode_output_file,
             mode="w",
             newline="",
         ) as file:
@@ -470,7 +470,7 @@ class PPOAgent:
             # tensorboard_writer.add_scalar("Training/Epoch/GotFlag", batch_flags, iteration)
 
             with open(
-                os.path.join(self.options.training_result_path, training_output_file),
+                training_output_file,
                 mode="a",
                 newline="",
             ) as file:
@@ -585,8 +585,8 @@ def main():
 
     agent = PPOAgent(env, options)
     agent.load_networks(
-        actor_path="model/ActionPredictionModel (1).pth",
-        critic_path="model/trained_critic.pth",
+        actor_path="model/ppo_actor_no_supervised.pth",
+        critic_path="model/ppo_critic_no_supervised.pth",
     )
 
     total_timesteps = 3_000_000
