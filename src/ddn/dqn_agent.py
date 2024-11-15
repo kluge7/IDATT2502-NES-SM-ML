@@ -50,7 +50,7 @@ class DQNAgent:
                 return q_values.max(1)[1].item()
 
     def update(self):
-        if len(self.memory) < self.batch_size:
+        if len(self.memory) < hp.REPLAY_MEMORY_SIZE / 4:
             return
 
         # Increment beta towards 1 over time
