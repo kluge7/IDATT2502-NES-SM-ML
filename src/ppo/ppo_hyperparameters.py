@@ -44,7 +44,7 @@ class PPOHyperparameters:
         min_lr_limit=0.000001,
         num_minibatches=5,
         lam=0.98,
-        ent_coef=0.01,
+        ent_coef=0.1,
         max_grad_norm=0.5,
         kl_divergence=True,
         target_kl=0.02,
