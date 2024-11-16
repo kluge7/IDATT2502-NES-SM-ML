@@ -58,9 +58,7 @@ python main.py train --method=PPO --world=4 --stage=2
 
 To continue to train from trained models, you would have to load them:
 ```bash
-python main.py train --method=PPO
---actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth"
---critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
+python main.py train --method=PPO --actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth" --critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
 ```
 
 There are many more arguments you can set. For more details, check out the [main.py](./main.py) file.
@@ -73,8 +71,7 @@ python main.py train --method=DDQN --episodes=15000
 
 To train from an already trained model, use this command:
 ```bash
-python main.py train --method=DDQN
---ddqn_model_save="src/ddqn/model/ddqn_1-1.pth"
+python main.py train --method=DDQN --ddqn_model_save="src/ddqn/model/ddqn_1-1.pth"
 ```
 
 ### Test models
@@ -83,21 +80,17 @@ python main.py train --method=DDQN
 To test trained ppo models, you can use the following commands:
 
 ```bash
-python main.py test --method=PPO
---actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth"
---critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
+python main.py test --method=PPO --actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth" --critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
 ```
 
 Note that this will only display for one episode. If you want to test for several episodes use this command:
 ```bash
-python main.py test --method=PPO
---test_episode_number=5
---actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth"
---critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
+python main.py test --method=PPO --test_episode_number=5 --actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth" --critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
 ```
 
 Alternatively, you can also record the gameplay. To do this you would have to install this external library:
 (The size is 80 Mb)
+(NB: Only works for Windows)
 ```bash
 iwr -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip; `
 Expand-Archive -Path ffmpeg.zip -DestinationPath .; `
@@ -108,19 +101,13 @@ rm ffmpeg.zip
 
 After installing this library in current directory, you can record with this cammnd:
 ```bash
-python main.py test --method=PPO
---record=True
---actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth"
---critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
+python main.py test --method=PPO --record=True --actor_load_path=--actor_load_path="src/ppo/model/ppo_actor.pth" --critic_load_path=--critic_load_path="src/ppo/model/ppo_critic.pth"
 ```
 
 #### Test with DDQN models
 To test DDQN models use this command:
 ```bash
-python main.py test --method=DDQN
---record=True
---ddqn_model_save="src/ddqn/model/ddqn_1-1_supervised.pth"
---eval_runs=5
+python main.py test --method=DDQN --record=True --ddqn_model_save="src/ddqn/model/ddqn_1-1_supervised.pth" --eval_runs=5
 ```
 This will record and use provided DDQN model for 5 episodes.
 
