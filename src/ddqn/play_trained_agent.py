@@ -1,23 +1,25 @@
 import time
 
-import hyperparameters as hp
 import torch
-from ddqn_agent import DDQNAgent
 
-from src.environment.environment import create_env
+from src.ddqn.ddqn_agent import DDQNAgent
+from src.ddqn.hyperparameters import (
+    DDQNHyperparameters,
+)  # Import your hyperparameters class
+from src.environment.environment import (
+    create_env,
+)  # Adjust the import path if necessary
 
 
-def play_trained_agent():
-    env = create_env()
-
+def play_trained_agent(hp: DDQNHyperparameters, env):
     in_dim = env.observation_space.shape
     num_actions = env.action_space.n
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    agent = DDQNAgent(state_shape=in_dim, action_size=num_actions, device=device)
-    agent.load_model(hp.MODEL_SAVE_PATH)
+    agent = DDQNAgent(state_shape=in_dim, action_size=num_actions, device=device, hp=hp)
+    agent.load_model(hp.model_save_path)
 
-    for run in range(hp.RUNS):
+    for run in range(hp.runs):
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device)
         done = False
@@ -32,7 +34,7 @@ def play_trained_agent():
             state = torch.tensor(next_state, dtype=torch.float32, device=device)
             total_reward += reward
 
-            time.sleep(hp.DELAY)
+            time.sleep(hp.delay)
 
         print(f"Total Reward for Run {run + 1}: {total_reward}")
 
@@ -40,4 +42,6 @@ def play_trained_agent():
 
 
 if __name__ == "__main__":
-    play_trained_agent()
+    # Initialize hyperparameters
+    hp = DDQNHyperparameters()
+    play_trained_agent(hp, create_env())

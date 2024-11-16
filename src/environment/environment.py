@@ -13,9 +13,15 @@ from src.environment.wrappers import (
 )
 
 
-def create_env(map="SuperMarioBros-1-1-v0", skip=4, output_path=None):
+def create_env(
+    map="SuperMarioBros-1-1-v0",
+    skip=4,
+    output_path=None,
+    actions=COMPLEX_MOVEMENT,
+    stages=None,
+):
     """Sets up the Super Mario Bros environment with customized wrappers."""
-    env = JoypadSpace(gym_super_mario_bros.make(map), COMPLEX_MOVEMENT)
+    env = JoypadSpace(gym_super_mario_bros.make(map, stages), actions)
     if output_path is not None:
         monitor = Monitor(width=256, height=240, saved_path=output_path)
     else:
@@ -27,3 +33,6 @@ def create_env(map="SuperMarioBros-1-1-v0", skip=4, output_path=None):
     env = ObservationBuffer(env, 4)
     env = NormalizePixels(env)
     return env
+
+
+create_env()
