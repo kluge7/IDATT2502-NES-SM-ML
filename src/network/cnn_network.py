@@ -1,4 +1,4 @@
-import torch as nn
+import torch.nn as nn
 
 
 class CNNNetwork(nn.Module):
